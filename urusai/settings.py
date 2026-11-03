@@ -8,23 +8,33 @@ import os
 DEFAULT_PATH = "/roms/urusai_settings.txt"
 
 DEFAULTS = {
-    "button": "L2",          # L1 R1 L2 R2 L3 R3 SELECT START, or an evdev code like 0x138; "off" to disable
-    "voice": "tohoku",       # a file in voice/: tohoku, tohoku_happy, mei, mei_happy, nitech
+    "auto_read": "on",       # read new dialogue and menu choices automatically
+    "autostart": "on",       # switch the reader on by itself when a game starts
+    "button": "L2",          # "say it again": L1 R1 L2 R2 L3 R3 SELECT START, an evdev code like 0x138, or off
+    "voice": "tohoku",       # dialogue voice, a file in voice/: tohoku, tohoku_happy, mei, mei_happy, nitech
+    "menu_voice": "nitech",  # voice for menu options
     "volume": 200,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
     "speed": 0.95,           # 1.0 = normal speaking speed
-    "captures_keep": 50,     # newest screenshots kept in urusai_captures (0 = don't save any)
-    "retroarch_port": 55355,
+    "captures_keep": 50,     # newest spoken screens kept in urusai_captures (0 = don't save any)
 }
 
 TEMPLATE = """\
 # Pokémon Urusai settings — edit on your PC, changes apply on the next button press.
 
-# Button that reads the screen aloud (no Select needed):
-#   L1 R1 L2 R2 L3 R3 SELECT START, or "off"
+# Read new text and menu choices automatically: on / off
+auto_read = {auto_read}
+
+# Switch the reader on by itself a few seconds after a game starts: on / off
+# (otherwise press the button, or Select + Y, once per game)
+autostart = {autostart}
+
+# "Say it again" button — reads the whole screen again (no Select needed):
+#   L1 R1 L2 R2 L3 R3 SELECT START, or off
 button = {button}
 
-# Voice: tohoku (female, default), tohoku_happy, mei (female), mei_happy, nitech (male)
+# Voices: tohoku (female), tohoku_happy, mei (female), mei_happy, nitech (male)
 voice = {voice}
+menu_voice = {menu_voice}
 
 # Voice volume in percent. 100 = natural; 150-250 = louder over the music.
 volume = {volume}
@@ -32,8 +42,8 @@ volume = {volume}
 # Speaking speed. 1.0 = normal, 0.85 = slower, 1.15 = faster.
 speed = {speed}
 
-# How many recent screenshots to keep in urusai_captures (each is ~2 KB).
-# They're only for fixing misreads. 0 = don't save any.
+# How many recently read screens to keep in urusai_captures (each is ~2 KB).
+# They're only for fixing misreads; the oldest are deleted. 0 = don't save any.
 captures_keep = {captures_keep}
 """
 
@@ -87,6 +97,12 @@ def write_template(path, overrides=None):
         f.write(TEMPLATE.format(**values))
 
 
-if __name__ == "__main__":  # python3 -m urusai.settings PATH  -> write a fresh file
+def upgrade(path):
+    """Rewrite the file with the current comments and options, keeping the user's values."""
+    current = Settings(path).values if os.path.exists(path) else {}
+    write_template(path, current)
+
+
+if __name__ == "__main__":  # python3 -m urusai.settings PATH  -> create or upgrade the file
     import sys
-    write_template(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PATH)
+    upgrade(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PATH)

@@ -1,16 +1,12 @@
-"""Read the screen with a single button (no Select hotkey needed).
+"""Watch one gamepad button (read-only; the game still sees every press).
 
 RetroArch only fires hotkeys while its "hotkey enable" button (Select on
-dArkOS) is held. Instead we watch the gamepad ourselves (read-only, the
-game still sees every press) and, when the chosen button goes down, send
-RetroArch its AI_SERVICE network command on UDP 55355.
-
+dArkOS) is held, so the "say it again" button is watched here instead.
 No third-party modules: input events are read straight from /dev/input.
 """
 import glob
 import os
 import select
-import socket
 import struct
 import sys
 import threading
@@ -111,8 +107,3 @@ class ButtonWatcher(threading.Thread):
             for fd in fds:
                 os.close(fd)
 
-
-def retroarch_command(cmd, port=55355, host="127.0.0.1"):
-    """Send a RetroArch network command (needs network_cmd_enable = "true")."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.sendto(cmd.encode("ascii"), (host, port))

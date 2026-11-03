@@ -46,6 +46,14 @@ class SettingsFile(unittest.TestCase):
         os.utime(path, (1, 1))  # force a new mtime
         self.assertTrue(s.reload())
         self.assertEqual((s["volume"], s["voice"], s["speed"]), (300, "tohoku", settings.DEFAULTS["speed"]))
+        # upgrading keeps values and drops unknown keys
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("volume = 250\nretroarch_port = 1\n")
+        settings.upgrade(path)
+        text = open(path, encoding="utf-8").read()
+        self.assertIn("volume = 250", text)
+        self.assertIn("auto_read = on", text)
+        self.assertNotIn("retroarch_port", text)
 
 
 class Loudness(unittest.TestCase):
@@ -113,37 +121,151 @@ class Buttons(unittest.TestCase):
             button.devices_with = orig
 
 
-class RetroArchRequest(unittest.TestCase):
-    def test_speech_round_trip(self):
-        g = make_font()
+class FakeClock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, dt):
+        self.t += dt
+
+
+def scrolled_canvas(g):
+    cv = Canvas(g)
+    cv.box(12, 0, 17, 19)
+    cv.text(14, 1, "とびだしてきた！")
+    cv.text(16, 1, "ゆけ！ ゼニガメ！")
+    cv.put(16, 18, "<more>")
+    return cv
+
+
+def battle_menu(g, cursor_row, cursor_col):
+    cv = Canvas(g)
+    cv.box(12, 0, 17, 19)
+    cv.box(12, 8, 17, 19)
+    cv.text(14, 10, "たたかう")
+    cv.text(14, 15, "ポケモン")
+    cv.text(16, 10, "どうぐ")
+    cv.text(16, 15, "にげる")
+    cv.put(cursor_row, cursor_col, "<cursor>")
+    return cv
+
+
+class Streaming(unittest.TestCase):
+    """Drive the server the way RetroArch's auto mode does, with a fake clock."""
+
+    def setUp(self):
+        self.g = make_font()
         d = tempfile.mkdtemp()
         fontp = os.path.join(d, "f.json")
-        font_from(g).save(fontp)
+        font_from(self.g).save(fontp)
         cfg = os.path.join(d, "settings.txt")
-        settings.write_template(cfg, {"captures_keep": 2})
-        app = server.App(fontp, settings.Settings(cfg), capture_dir=os.path.join(d, "cap"), speaker=Speaker())
-        srv = server.ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(app))
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        url = "http://127.0.0.1:%d/?source_lang=ja&target_lang=ja&output=sound,wav" % srv.server_address[1]
+        settings.write_template(cfg, {"captures_keep": 3})
+        self.cap = os.path.join(d, "cap")
+        self.clock = FakeClock()
+        self.app = server.App(fontp, settings.Settings(cfg), capture_dir=self.cap,
+                              clock=self.clock, sleep=self.clock.sleep)
 
-        def post(png):
-            body = json.dumps({"image": base64.b64encode(png).decode(), "state": {"paused": 0}}).encode()
-            with urllib.request.urlopen(urllib.request.Request(url, body)) as r:
-                return json.loads(r.read())
+    def frame(self, canvas):
+        body = json.dumps({"image": base64.b64encode(pngdec.encode(canvas.image())).decode()}).encode()
+        resp = self.app.handle(body, {"output": ["sound,wav"]})
+        self.assertEqual(resp.get("auto"), "auto")  # the stream must never stop
+        if "sound" in resp:  # RetroArch waits for the speech to finish
+            self.clock.t = self.app.speaking_until + 0.05
+        return resp
 
-        frame = pngdec.encode(dialogue_canvas(g).image())
-        for _ in range(3):
-            resp = post(frame)
-        wav = base64.b64decode(resp["sound"])
-        self.assertEqual(wav[:4], b"RIFF")
-        self.assertGreater(len(wav), 48000)
-        self.assertLessEqual(peak(wav), audio.CEILING)
-        pngs = [x for x in os.listdir(os.path.join(d, "cap")) if x.endswith(".png")]
-        self.assertEqual(len(pngs), 2)  # captures_keep honoured, oldest deleted
-        self.assertEqual(post(pngdec.encode(Canvas(g).image())), {"error": "No text found."})
-        srv.shutdown()
-        srv.server_close()
+    def said(self, resp):
+        return "sound" in resp
 
+    def test_auto_reading_session(self):
+        app, narrator = self.app, self.app.narrator
+        # 1. stream just started (hotkey) on a dialogue box -> read it
+        self.assertTrue(self.said(self.frame(dialogue_canvas(self.g))))
+        self.assertEqual(narrator.spoken_dialogue, ["やせいの ピカチュウが", "とびだしてきた！"])
+        # 2. same box again -> silence
+        self.assertFalse(self.said(self.frame(dialogue_canvas(self.g))))
+        # 3. box scrolled one line -> only the new line is planned
+        plan = narrator.plan(reader_of(self.app, scrolled_canvas(self.g)))
+        self.assertEqual(plan, [("talk", "ゆけ！ ゼニガメ！")])
+        self.assertTrue(self.said(self.frame(scrolled_canvas(self.g))))
+        # 4. battle menu opens: waits until it sits still, then reads all options, beep before ▶
+        self.assertFalse(self.said(self.frame(battle_menu(self.g, 14, 9))))
+        self.clock.t += 0.3
+        r = reader_of(app, battle_menu(self.g, 14, 9))
+        # reading order is row by row (this synthetic menu has ポケモン on the top row)
+        self.assertEqual(narrator.plan(r), [("beep",), ("menu", "たたかう"), ("menu", "ポケモン"),
+                                            ("menu", "どうぐ"), ("menu", "にげる")])
+        self.assertTrue(self.said(self.frame(battle_menu(self.g, 14, 9))))
+        # 5. cursor moves to にげる -> just the new option
+        self.assertFalse(self.said(self.frame(battle_menu(self.g, 16, 14))))
+        self.clock.t += 0.3
+        self.assertEqual(narrator.plan(reader_of(app, battle_menu(self.g, 16, 14))), [("menu", "にげる")])
+        self.assertTrue(self.said(self.frame(battle_menu(self.g, 16, 14))))
+        # 6. nothing new -> silence; the button -> whole menu again
+        self.assertFalse(self.said(self.frame(battle_menu(self.g, 16, 14))))
+        self.assertFalse(app.press())  # stream alive: no need to press the hotkey
+        self.assertTrue(self.said(self.frame(battle_menu(self.g, 16, 14))))
+        # captures: only spoken screens, newest 3 kept
+        self.assertEqual(len([x for x in os.listdir(self.cap) if x.endswith(".png")]), 3)
+
+    def test_fresh_stream_on_empty_screen_is_valid_for_retroarch(self):
+        self.assertEqual(self.frame(Canvas(self.g)), {"error": "No text found.", "auto": "auto"})
+        self.assertEqual(self.frame(Canvas(self.g)), {"auto": "auto"})
+
+    def test_stopped_stream_needs_the_hotkey(self):
+        self.assertTrue(self.app.press())  # nothing streaming yet
+        self.frame(Canvas(self.g))
+        self.assertFalse(self.app.press())
+        self.clock.t += 5
+        self.assertTrue(self.app.press())
+
+    def test_auto_read_off_only_speaks_on_press(self):
+        self.app.settings.values["auto_read"] = "off"
+        self.frame(Canvas(self.g))                       # stream running
+        self.clock.t += 1
+        self.assertFalse(self.said(self.frame(dialogue_canvas(self.g))))
+        self.app.press()
+        self.assertTrue(self.said(self.frame(dialogue_canvas(self.g))))
+
+
+def reader_of(app, canvas):
+    from urusai import reader
+    return reader.analyze_image(app.font, canvas.image())
+
+
+class Narration(unittest.TestCase):
+    def test_new_lines(self):
+        from urusai.speech import new_lines
+        self.assertEqual(new_lines(["b", "c"], ["a", "b"]), ["c"])
+        self.assertEqual(new_lines(["a", "b"], ["a", "b"]), ["a", "b"])   # same box: all again
+        self.assertEqual(new_lines(["x", "y"], ["a", "b"]), ["x", "y"])
+
+    def test_beep_wav(self):
+        from urusai.speech import beep, to_wav
+        self.assertEqual(to_wav(beep())[:4], b"RIFF")
+
+
+class VirtualKeys(unittest.TestCase):
+    def test_chord_events(self):
+        from unittest import mock
+        from urusai import vkbd
+        writes = []
+        with mock.patch.object(vkbd.os, "open", return_value=99), \
+                mock.patch.object(vkbd.fcntl, "ioctl") as ioctl, \
+                mock.patch.object(vkbd.os, "write", side_effect=lambda fd, b: writes.append(b)), \
+                mock.patch.object(vkbd.time, "sleep"):
+            k = vkbd.VirtualKeyboard()
+            self.assertEqual(len(writes[0]), 1116)  # struct uinput_user_dev
+            ioctl.assert_any_call(99, vkbd.UI_DEV_CREATE)
+            k.chord()
+        keys = [vkbd.EVENT.unpack(w)[2:] for w in writes[1:]]
+        presses = [(c, v) for t, c, v in keys if t == vkbd.EV_KEY]
+        self.assertEqual(presses, [(vkbd.KEY_F8, 1), (vkbd.KEY_F6, 1), (vkbd.KEY_F6, 0), (vkbd.KEY_F8, 0)])
+
+
+class Bundle(unittest.TestCase):
     def test_bundled_voices(self):
         self.assertTrue({"mei", "tohoku", "nitech"} <= set(voices()))
 

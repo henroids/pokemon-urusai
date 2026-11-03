@@ -39,11 +39,8 @@ cp -f "$SRC"/README.md "$SRC"/INSTALL.md "$SRC"/LICENSES.md "$DEST/" 2>/dev/null
 chmod +x "$DEST/bin/open_jtalk-aarch64"
 mkdir -p "$CAPTURE_DIR" && chown "$USER_NAME" "$CAPTURE_DIR" 2>/dev/null
 
-if [ -f "$SETTINGS" ]; then
-  say "Keeping your settings: $SETTINGS"
-else
-  (cd "$DEST" && python3 -m urusai.settings "$SETTINGS") && say "Created settings: $SETTINGS"
-fi
+# Create the settings file, or refresh its comments/new options keeping your values.
+(cd "$DEST" && python3 -m urusai.settings "$SETTINGS") && say "Settings: $SETTINGS"
 
 say "Testing the voice ..."
 echo "ポケモン" | "$DEST/bin/open_jtalk-aarch64" -x "$DEST/dic" -m "$DEST/voice/tohoku.htsvoice" -ow /tmp/urusai_test.wav \
@@ -59,7 +56,7 @@ systemctl restart urusai.service
 sleep 2
 systemctl is-active --quiet urusai.service || die "service did not start: journalctl -u urusai"
 
-say "Configuring RetroArch (AI Service -> Speech, no pause, network commands on) ..."
+say "Configuring RetroArch (AI Service -> Speech, no pause, keyboard hotkey) ..."
 set_cfg() {  # file key value
   local f="$1" k="$2" v="$3"
   if grep -q "^$k *=" "$f"; then sed -i "s#^$k *=.*#$k = \"$v\"#" "$f"; else echo "$k = \"$v\"" >> "$f"; fi
@@ -71,13 +68,14 @@ for cfg in "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroa
   set_cfg "$cfg" ai_service_enable true
   set_cfg "$cfg" ai_service_mode 1
   set_cfg "$cfg" ai_service_url "http://127.0.0.1:4404/"
-  set_cfg "$cfg" ai_service_pause false
-  # The reader watches the button set in urusai_settings.txt (L2) and asks RetroArch
-  # to read the screen over its network command port.
-  set_cfg "$cfg" network_cmd_enable true
-  set_cfg "$cfg" network_cmd_port 55355
-  # Backup: RetroArch's own hotkey, Select (dArkOS hotkey enable) + Y.
+  set_cfg "$cfg" ai_service_pause false          # no pause; also needed for auto mode
+  # The reader presses F8+F6 on a virtual keyboard to start RetroArch's AI Service:
+  # F8 = hotkey enable (Select still works on the pad), F6 = AI Service.
+  set_cfg "$cfg" input_enable_hotkey f8
+  set_cfg "$cfg" input_ai_service f6
+  # By hand: Select + Y starts/stops the reader.
   set_cfg "$cfg" input_ai_service_btn 3
+  set_cfg "$cfg" network_cmd_enable false        # was used by v0.3.0
   chown "$USER_NAME" "$cfg"
   say "  updated $cfg"
   found=1
@@ -85,7 +83,8 @@ done
 [ "$found" = 1 ] || say "  (no retroarch.cfg found — set AI Service by hand, see README)"
 
 say ""
-say "Done! In a game, press L2 to hear the text."
+say "Done! Start a game: the text is read automatically."
+say "L2 = say it again.  Select + Y = switch the reader on/off."
 say "Settings (volume, voice, button): $SETTINGS"
 say "(log: $LOG)"
 sleep 6

@@ -4,13 +4,15 @@ Gen 1 Japanese text sits on the 8x8 tile grid. Dakuten/handakuten (゛/゜)
 are drawn in the tile *above* the kana they modify, so we combine a mark
 with the kana directly below it.
 
-Reading policy (tuned for a child who can't read yet):
-  * if a filled ▶ cursor is on screen, read the dialogue box (if one is
-    open) and then the selected menu entry;
-  * otherwise read the dialogue box;
-  * otherwise read every line of text on screen, top to bottom.
+analyze() describes a screen as a Reading:
+  * dialogue — the lines of the message box at the bottom (rows 13-16);
+  * options / selected — the entries of the menu holding the ▶ cursor;
+  * other — every text line, for screens with neither (e.g. the Pokédex).
+read_labels() flattens that to one string (dialogue, then the selected
+entry), which is what the regression frames record.
 """
 import unicodedata
+from dataclasses import dataclass, field
 
 from . import screen
 
@@ -134,23 +136,98 @@ def has_dialogue_box(labels):
     return len(labels) == 18 and full(12) and full(17)
 
 
-def cut_selected(sel, segs):
-    """A ▶ row can hold several entries (battle menu, name grid). Cut the
-    selected one at the first blank whose next column starts a word on
-    another row too, i.e. where the menu's columns line up."""
-    starts = set()
-    for s in segs:
-        if s is sel:
-            continue
-        prev_blank = True
-        for col, ch in zip(s.cols, s.chars):
-            if ch != " " and prev_blank:
-                starts.add(col)
-            prev_blank = ch == " "
-    for i in range(1, len(sel.chars)):
-        if sel.chars[i - 1] == " " and sel.chars[i] != " " and sel.cols[i] in starts:
-            return " ".join("".join(sel.chars[:i]).split())
-    return sel.text
+def word_starts(seg):
+    """Columns where a word starts in a segment."""
+    starts, prev_blank = [], True
+    for col, ch in zip(seg.cols, seg.chars):
+        if ch != " " and prev_blank:
+            starts.append(col)
+        prev_blank = ch == " "
+    return starts
+
+
+def split_entries(seg, others):
+    """Cut a menu row into entries at blanks where the next column starts a
+    word on another row too (the menu's columns line up), e.g. the battle
+    menu's たたかう|どうぐ or the name grid's single kana."""
+    aligned = {col for o in others if o is not seg for col in word_starts(o)}
+    entries, cur = [], []
+    for i, (col, ch) in enumerate(zip(seg.cols, seg.chars)):
+        if i and ch != " " and seg.chars[i - 1] == " " and col in aligned and cur:
+            entries.append(cur)
+            cur = []
+        cur.append((col, ch))
+    if cur:
+        entries.append(cur)
+    out = []
+    for e in entries:
+        text = " ".join("".join(ch for _, ch in e).split())
+        first = next((col for col, ch in e if ch != " "), None)
+        if text:
+            out.append((seg.row, first, text))
+    return out
+
+
+EMPTY_ENTRIES = {"ー", "-", "－"}  # unused move slots
+
+
+@dataclass
+class Reading:
+    dialogue: list = field(default_factory=list)   # message box lines, top to bottom
+    options: list = field(default_factory=list)    # menu entries in reading order
+    selected: int = None                           # index into options
+    other: list = field(default_factory=list)      # all text lines (no box, no menu)
+    more: bool = False                             # ▼ shown: the box waits for A
+
+    @property
+    def kind(self):
+        return "menu" if self.selected is not None else "dialogue" if self.dialogue else \
+            "other" if self.other else "none"
+
+    @property
+    def selected_text(self):
+        return self.options[self.selected] if self.selected is not None else ""
+
+    def flat(self):
+        """One string: dialogue + selected entry, or the box, or everything."""
+        if self.selected is not None:
+            parts = self.dialogue + [self.selected_text]
+        else:
+            parts = self.dialogue or self.other
+        return fix_shared(" ".join(p for p in parts if p))
+
+
+def analyze(labels):
+    segs = segments(labels)
+    r = Reading()
+    if not segs:
+        return r
+    box = has_dialogue_box(labels)
+    sel = next((s for s in segs if s.selected), None)
+    menu = []
+    if sel is not None:
+        l, rr, t, b = _box_around(labels, sel.row, sel.c0)
+        menu = [s for s in segs if t <= s.row <= b and s.c1 >= l and s.c0 <= rr]
+        entries = []
+        for s in menu:
+            entries.extend(split_entries(s, menu))
+        entries.sort()
+        first = next((c for c, ch in zip(sel.cols, sel.chars) if ch != " "), None)
+        kept = [e for e in entries if e[2] not in EMPTY_ENTRIES or (e[0], e[1]) == (sel.row, first)]
+        r.options = [fix_shared(e[2]) for e in kept]
+        r.selected = next((i for i, e in enumerate(kept) if (e[0], e[1]) == (sel.row, first)), None)
+        if r.selected is None and r.options:
+            r.selected = 0
+    if box:
+        rows = {}
+        for s in segs:
+            if 13 <= s.row <= 16 and s not in menu:
+                rows.setdefault(s.row, []).append(s.text)
+        r.dialogue = [fix_shared(" ".join(rows[k])) for k in sorted(rows)]
+        r.more = any(labels[row][c] == "<more>" for row in range(13, 17) for c in range(len(labels[0])))
+    if r.selected is None and not r.dialogue:
+        r.other = [fix_shared(s.text) for s in segs]
+    return r
 
 
 def fix_shared(text):
@@ -174,25 +251,13 @@ def fix_shared(text):
 
 
 def read_labels(labels):
-    segs = segments(labels)
-    if not segs:
-        return ""
-    box = has_dialogue_box(labels)
-    selected = [s for s in segs if s.selected]
-    if selected:
-        sel = selected[0]
-        l, r, t, b = _box_around(labels, sel.row, sel.c0)
-        dialogue = [s for s in segs if box and not s.selected and 13 <= s.row <= 16
-                    and not (t <= s.row <= b and s.c1 >= l and s.c0 <= r)]
-        mates = [s for s in segs if t <= s.row <= b and s.c1 >= l and s.c0 <= r]
-        parts = [s.text for s in dialogue] + [cut_selected(sel, mates)]
-    elif box and any(13 <= s.row <= 16 for s in segs):
-        parts = [s.text for s in segs if 13 <= s.row <= 16]
-    else:
-        parts = [s.text for s in segs]
-    return fix_shared(" ".join(p for p in parts if p))
+    return analyze(labels).flat()
 
 
 def read_image(font, img):
+    return analyze_image(font, img).flat()
+
+
+def analyze_image(font, img):
     frame = screen.to_gb_frame(img)
-    return read_labels(label_grid(font, screen.tiles(frame)))
+    return analyze(label_grid(font, screen.tiles(frame)))

@@ -1,13 +1,13 @@
 # Pokémon Urusai
 
-An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Press **L2** and the current text box, menu choice or battle message is read aloud in Japanese. The game keeps running while it talks.
+An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a beep marking the selected one. **L2** says it again. The game keeps running while it talks.
 
 Everything runs on the handheld, with no internet and no PC:
 
-1. A small watcher sees the button press.
-2. It asks RetroArch to send the current frame to a tiny local server (`127.0.0.1:4404`) through RetroArch's **AI Service**.
-3. The server reads the kana by matching the game's 8×8 font tiles and speaks the result with **Open JTalk**.
-4. RetroArch plays the returned WAV over the game.
+- RetroArch's **AI Service** runs in its *auto* mode: it keeps sending frames to a tiny local server (`127.0.0.1:4404`), and plays any speech we send back.
+- The server reads the kana by matching the game's 8×8 font tiles. It decides what's new: a scrolled line, a menu that opened, a cursor that moved.
+- It speaks with **Open JTalk** and prepares the speech in the background, so it plays almost at once.
+- A virtual keyboard presses RetroArch's AI Service hotkey to start the stream when a game launches (or when L2 is pressed).
 
 **→ To install it, see [INSTALL.md](INSTALL.md).**
 
@@ -16,17 +16,17 @@ Everything runs on the handheld, with no internet and no PC:
 | Part | State |
 |---|---|
 | RetroArch AI Service (Speech mode, no pause) | works on the RGB20 Pro (dArkOS) |
-| Single-button trigger (L2) via RetroArch network command | new in 0.3.0 |
+| Auto reading via RetroArch auto mode, L2 = say again, autostart via uinput | new in 0.4.0, needs hardware testing |
 | Gen 1 font (`font/gen1_jp.json`, 129 tiles) | all kana, marks, menus; some digits and symbols still missing |
-| Offline voices: tohoku (default), mei, nitech | static aarch64 `open_jtalk`, no apt needed |
-| Settings file on the SD card | volume, voice, speed, button, captures |
+| Offline voices: tohoku (dialogue), nitech (menus), mei | static aarch64 `open_jtalk`, no apt needed |
+| Settings file on the SD card | auto read, autostart, button, voices, volume, speed, captures |
 | Knulli (RG35XXSP) | todo |
 
 ## What it reads
 
-- **Dialogue box** (bottom of the screen): the whole box, for example 「やせいの ピカチュウが とびだしてきた！」.
-- **Menus with a ▶ cursor**: any message, then the **selected option** (for example 「たたかう」). Move the cursor, press L2, and hear what it's on.
-- **Anything else** (e.g. the Pokédex): all the text on screen, top to bottom.
+- **Dialogue** (the box at the bottom): read once it has finished printing. When the box scrolls one line, **only the new line** is read.
+- **Menus and questions**: the question, then every option in the menu voice, with a **beep before the selected one**. Moving the cursor reads **just the new option**. Big grids (name entry) read only the selected letter.
+- **L2**, any time: the whole screen again, including screens that aren't read automatically (e.g. the Pokédex).
 
 Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're added.
 
@@ -34,12 +34,14 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 
 | Path | What |
 |---|---|
-| `urusai/server.py` | AI Service endpoint, settings, captures |
-| `urusai/reader.py` | tiles → text (゛/゜ above the line, boxes, ▶ cursor, shared へ/ヘ tiles) |
+| `urusai/server.py` | AI Service endpoint: the frame stream, when to speak, autostart, captures |
+| `urusai/speech.py` | what to say (new lines only, menus with beep) + background speech cache |
+| `urusai/vkbd.py` | virtual keyboard (uinput) that presses the AI Service hotkey |
+| `urusai/reader.py` | tiles → `Reading` (dialogue lines, menu options + selection, other text) |
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |
 | `urusai/font.py` | tile → label table |
 | `urusai/tts.py`, `audio.py`, `normalize.py` | Open JTalk, loudness, text clean-up for speech |
-| `urusai/button.py` | gamepad watcher → RetroArch `AI_SERVICE` command |
+| `urusai/button.py` | gamepad watcher for the "say it again" button |
 | `urusai/settings.py` | `urusai_settings.txt` |
 | `font/gen1_jp.json` | the font, built by `tools/build_font.py` from `tests/frames/` |
 | `tests/frames/` | 36 reference frames (160×144) from 青, with expected readings |
@@ -47,7 +49,7 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 
 ## Adding missing symbols
 
-Every button press saves the frame and what was read to `urusai_captures/` on the SD card (the newest 50 are kept). To teach new tiles:
+Everything read aloud also saves the frame and the text to `urusai_captures/` on the SD card (the newest 50 are kept). To teach new tiles:
 
 ```sh
 tools/learn.py unknown captures/                    # unknown tiles next to text, with examples

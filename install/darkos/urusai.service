@@ -6,6 +6,7 @@ After=local-fs.target
 Type=simple
 User=root
 WorkingDirectory=@DEST@
+ExecStartPre=-/sbin/modprobe uinput
 ExecStart=/usr/bin/python3 -m urusai.server --port 4404 --capture @CAPTURE@ --settings @SETTINGS@
 Restart=on-failure
 RestartSec=3

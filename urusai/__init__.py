@@ -1,2 +1,2 @@
 """Pokémon Urusai — offline Japanese screen reader for Gen 1 Pokémon via RetroArch's AI Service."""
-__version__ = "0.3.0"
+__version__ = "0.4.0"
