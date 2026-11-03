@@ -13,6 +13,7 @@ DEST=/opt/urusai
 USER_NAME="${URUSAI_USER:-ark}"
 HOME_DIR="$(getent passwd "$USER_NAME" | cut -d: -f6)"
 CAPTURE_DIR="${URUSAI_CAPTURE_DIR:-/roms/urusai_captures}"
+SETTINGS="${URUSAI_SETTINGS:-/roms/urusai_settings.txt}"
 TTY=/dev/tty1
 LOG="${URUSAI_LOG:-/roms/urusai_install.log}"
 : > "$LOG" 2>/dev/null || LOG=/tmp/urusai_install.log
@@ -38,13 +39,19 @@ cp -f "$SRC"/README.md "$SRC"/INSTALL.md "$SRC"/LICENSES.md "$DEST/" 2>/dev/null
 chmod +x "$DEST/bin/open_jtalk-aarch64"
 mkdir -p "$CAPTURE_DIR" && chown "$USER_NAME" "$CAPTURE_DIR" 2>/dev/null
 
+if [ -f "$SETTINGS" ]; then
+  say "Keeping your settings: $SETTINGS"
+else
+  (cd "$DEST" && python3 -m urusai.settings "$SETTINGS") && say "Created settings: $SETTINGS"
+fi
+
 say "Testing the voice ..."
-echo "ポケモン" | "$DEST/bin/open_jtalk-aarch64" -x "$DEST/dic" -m "$(ls "$DEST"/voice/*.htsvoice | head -1)" -ow /tmp/urusai_test.wav \
+echo "ポケモン" | "$DEST/bin/open_jtalk-aarch64" -x "$DEST/dic" -m "$DEST/voice/tohoku.htsvoice" -ow /tmp/urusai_test.wav \
   && [ -s /tmp/urusai_test.wav ] || die "open_jtalk test failed"
 rm -f /tmp/urusai_test.wav
 
 say "Installing the background service ..."
-sed -e "s#@DEST@#$DEST#g" -e "s#@USER@#$USER_NAME#g" -e "s#@CAPTURE@#$CAPTURE_DIR#g" \
+sed -e "s#@DEST@#$DEST#g" -e "s#@CAPTURE@#$CAPTURE_DIR#g" -e "s#@SETTINGS@#$SETTINGS#g" \
   "$SRC/install/darkos/urusai.service" > /etc/systemd/system/urusai.service
 systemctl daemon-reload
 systemctl enable urusai.service >/dev/null 2>&1
@@ -52,7 +59,7 @@ systemctl restart urusai.service
 sleep 2
 systemctl is-active --quiet urusai.service || die "service did not start: journalctl -u urusai"
 
-say "Configuring RetroArch (AI Service -> Speech, localhost) ..."
+say "Configuring RetroArch (AI Service -> Speech, no pause, network commands on) ..."
 set_cfg() {  # file key value
   local f="$1" k="$2" v="$3"
   if grep -q "^$k *=" "$f"; then sed -i "s#^$k *=.*#$k = \"$v\"#" "$f"; else echo "$k = \"$v\"" >> "$f"; fi
@@ -64,9 +71,13 @@ for cfg in "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroa
   set_cfg "$cfg" ai_service_enable true
   set_cfg "$cfg" ai_service_mode 1
   set_cfg "$cfg" ai_service_url "http://127.0.0.1:4404/"
-  set_cfg "$cfg" ai_service_pause true
-  # Read-aloud button: Select (dArkOS hotkey enable) + Y. Y is unused by Game Boy games.
-  set_cfg "$cfg" input_ai_service_btn "${URUSAI_BUTTON:-3}"
+  set_cfg "$cfg" ai_service_pause false
+  # The reader watches the button set in urusai_settings.txt (L2) and asks RetroArch
+  # to read the screen over its network command port.
+  set_cfg "$cfg" network_cmd_enable true
+  set_cfg "$cfg" network_cmd_port 55355
+  # Backup: RetroArch's own hotkey, Select (dArkOS hotkey enable) + Y.
+  set_cfg "$cfg" input_ai_service_btn 3
   chown "$USER_NAME" "$cfg"
   say "  updated $cfg"
   found=1
@@ -74,6 +85,7 @@ done
 [ "$found" = 1 ] || say "  (no retroarch.cfg found — set AI Service by hand, see README)"
 
 say ""
-say "Done! In a game, press SELECT + Y to hear the text."
+say "Done! In a game, press L2 to hear the text."
+say "Settings (volume, voice, button): $SETTINGS"
 say "(log: $LOG)"
 sleep 6

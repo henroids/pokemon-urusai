@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Rebuild font/gen1_jp.json from Henry's reference screenshots.
 
-  build_font.py SHOTS_DIR [--out font/gen1_jp.json]
+  build_font.py [FRAMES_DIR] [--out font/gen1_jp.json]
 
-SHOTS_DIR holds the numbered captures (01.png … 36.png, AYN Thor 1080p
-screenshots of 青 / Blue). Each entry below says what text sits where.
+FRAMES_DIR (default tests/frames) holds the numbered reference frames
+01.png … 36.png, captured from 青 / Blue. Each entry below says what text
+sits where; EXPECT is what each frame must read as (also run by the tests).
 Text labels voiced kana's ゛/゜ in the row above automatically; a space
 must land on a blank tile, so a misplaced line fails loudly.
 """
@@ -94,84 +95,109 @@ TILES = [
     ("20", 6, 17, "メートル"), ("20", 8, 17, "キロ"), ("20", 8, 18, "グラム"), ("20", 8, 2, "ナンバー"),
 ]
 
-# What each screen should read as once the font is built (regression check).
+# What each frame must read as (checked by tools/build_font.py and the tests).
 EXPECT = {
     "01": "はんだくてん",
     "02": "だくてん",
     "03": "さいしょからはじめる",
     "04": "この せかいには ポケット モンスターと よばれる",
+    "05": "いきもの たちが いたるところに すんでいる！",
+    "06": "その ポケモン という いきものを ひとは ペットに したり",
     "07": "ひとは ペットに したり しょうぶに つかったり・・・",
     "08": "では はじめに きみの なまえを おしえて もらおう！",
     "09": "では はじめに きみの なまえを おしえて もらおう！ じぶんできめる",
     "10": "ア",
     "11": "カナ にゅうりょく",
     "12": "ゃ",
+    "13": "だくてん",
+    "14": "だくてん",
+    "15": "だくてん",
+    "16": "だくてん",
+    "17": "だくてん",
+    "18": "はんだくてん",
+    "19": "はんだくてん",
+    "20": "ゼニガメ かめのこポケモン たかさ 0.5メートル ナンバー.007 おもさ 9.0キログラム うまれたあと せなかが ふくらみ かたい こうらが できる。くちから きょうりょくな あわを だす。",
     "21": "ミユ『まてよ！ ヘンリー！ せっかく じーさんに",
     "22": "たたかう",
     "23": "たいあたり",
     "24": "ポケモンを えらんで ください ゼニガメ レベル5 20／ 20",
+    "25": "ダメだ！ しょうぶの さいちゅうに",
+    "26": "だくてん",
+    "27": "だくてん",
+    "28": "だくてん",
+    "29": "だくてん",
+    "30": "だくてん",
+    "31": "はんだくてん",
+    "32": "はんだくてん",
     "33": "はんだくてん",
     "34": "ふむ・・・ ヘンリー と いうんだな！",
     "35": "ミユ『あっ！ ずるい！ じいさん！ おれにも くれよお！",
-    "25": "ダメだ！ しょうぶの さいちゅうに",
     "36": "オーキド『まー！ あわてるな ミユ！",
 }
 
 
-def load(shots, name, cache={}):
-    if name not in cache:
-        with open(os.path.join(shots, name + ".png"), "rb") as f:
-            cache[name] = screen.tiles(screen.to_gb_frame(pngdec.decode(f.read())))
-    return cache[name]
+def load(frames, name, cache={}):
+    key = (frames, name)
+    if key not in cache:
+        with open(os.path.join(frames, name + ".png"), "rb") as f:
+            cache[key] = screen.tiles(screen.to_gb_frame(pngdec.decode(f.read())))
+    return cache[key]
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("shots")
-    p.add_argument("--out", default=os.path.join(ROOT, "font", "gen1_jp.json"))
-    a = p.parse_args()
+def build(frames, log=print):
+    """Label every tile listed in TEXT/TILES and return the Font."""
     font = Font()
     seen = {}
 
     def put(tile, label, where):
         old = seen.get(tile)
         if old and old[0] != label and reader.SHARED.get(old[0]) != label:
-            print("conflict: %s says %r, %s says %r" % (old[1], old[0], where, label))
+            log("conflict: %s says %r, %s says %r" % (old[1], old[0], where, label))
         seen.setdefault(tile, (label, where))
         font.add(tile, seen[tile][0])
 
     for shot, r, c, text in TEXT:
-        g = load(a.shots, shot)
+        g = load(frames, shot)
         for ch in text:
             where = "%s@%d:%d" % (shot, r, c)
             if ch == " ":
                 if g[r][c]:
-                    sys.exit("%s should be blank" % where)
+                    raise ValueError("%s should be blank" % where)
                 c += 1
                 continue
             d = unicodedata.normalize("NFD", ch)
             if not g[r][c]:
-                sys.exit("%s is blank but text says %r" % (where, ch))
+                raise ValueError("%s is blank but text says %r" % (where, ch))
             put(g[r][c], d[0], where)
             if len(d) > 1:
                 if not g[r - 1][c]:
-                    sys.exit("%s: no mark above %r" % (where, ch))
+                    raise ValueError("%s: no mark above %r" % (where, ch))
                 put(g[r - 1][c], SPLIT[d[1]], where + "^")
             c += 1
     for shot, r, c, label in TILES:
-        g = load(a.shots, shot)
+        g = load(frames, shot)
         if not g[r][c]:
-            sys.exit("%s@%d:%d is blank" % (shot, r, c))
+            raise ValueError("%s@%d:%d is blank" % (shot, r, c))
         put(g[r][c], label, "%s@%d:%d" % (shot, r, c))
+    return font
+
+
+def readings(font, frames):
+    """{frame name: what the reader says}."""
+    names = sorted(n[:-4] for n in os.listdir(frames) if n.endswith(".png"))
+    return {n: reader.read_labels(reader.label_grid(font, load(frames, n))) for n in names}
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("frames", nargs="?", default=os.path.join(ROOT, "tests", "frames"))
+    p.add_argument("--out", default=os.path.join(ROOT, "font", "gen1_jp.json"))
+    a = p.parse_args()
+    font = build(a.frames)
     font.save(a.out)
     print("font: %d tiles -> %s" % (len(font.table), a.out))
-
     bad = 0
-    for name in sorted(os.listdir(a.shots)):
-        if not name.endswith(".png"):
-            continue
-        n = name[:-4]
-        got = reader.read_labels(reader.label_grid(font, load(a.shots, n)))
+    for n, got in readings(font, a.frames).items():
         want = EXPECT.get(n)
         flag = "" if want is None else ("  ok" if got == want else "  MISMATCH (want %r)" % want)
         bad += bool(want is not None and got != want)

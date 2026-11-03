@@ -1,5 +1,6 @@
 """Minimal stdlib-only PNG decoder (8-bit, non-interlaced) and encoder.
 
+
 RetroArch sends the core frame as an 8-bit RGB PNG, so this is all the
 handheld needs; no Pillow or numpy required on the device.
 """
@@ -118,16 +119,3 @@ def encode(img):
     return (_SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", img.width, img.height, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
-
-def downscale(img, scale, x0=0, y0=0, w=160, h=144):
-    """Nearest-neighbour crop+downscale (sample each block's centre)."""
-    half = scale // 2
-    rows = []
-    for ty in range(h):
-        src = img.rows[y0 + ty * scale + half]
-        out = bytearray(w * 3)
-        for tx in range(w):
-            i = (x0 + tx * scale + half) * 3
-            out[tx * 3:tx * 3 + 3] = src[i:i + 3]
-        rows.append(bytes(out))
-    return Image(w, h, rows)

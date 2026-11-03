@@ -9,10 +9,9 @@ def to_gb_frame(img):
     """Return a 160x144 Image from whatever RetroArch / a phone sent."""
     if (img.width, img.height) == (GB_W, GB_H):
         return img
-    if (img.width, img.height) == (256, 224):  # Super Game Boy border
-        return pngdec.downscale(img, 1, 48, 40)
-    # A phone/handheld screenshot: the game is centred, either at the largest
-    # integer scale or stretched to fit (e.g. 7.5x on a 1080p AYN Thor).
+    # A bigger image: a Super Game Boy frame (game centred at 1x) or a phone/
+    # handheld screenshot (centred at an integer scale, or stretched to fit,
+    # e.g. 7.5x on a 1080p AYN Thor).
     # Try both and keep the one whose source pixels look like solid blocks.
     if img.width < GB_W or img.height < GB_H:
         raise ValueError("frame too small: %dx%d" % (img.width, img.height))

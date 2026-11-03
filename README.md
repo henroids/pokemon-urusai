@@ -1,63 +1,72 @@
 # Pokémon Urusai
 
-An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. When you press one button, it reads the current text box, menu choice or battle message aloud in Japanese.
+An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Press **L2** and the current text box, menu choice or battle message is read aloud in Japanese. The game keeps running while it talks.
 
-It runs entirely on the handheld. RetroArch's **AI Service** sends the frame to a tiny local server (`127.0.0.1:4404`). The server reads the kana by matching the game's 8×8 font tiles, speaks the result with **Open JTalk**, and sends back a WAV, which RetroArch plays.
+Everything runs on the handheld, with no internet and no PC:
+
+1. A small watcher sees the button press.
+2. It asks RetroArch to send the current frame to a tiny local server (`127.0.0.1:4404`) through RetroArch's **AI Service**.
+3. The server reads the kana by matching the game's 8×8 font tiles and speaks the result with **Open JTalk**.
+4. RetroArch plays the returned WAV over the game.
+
+**→ To install it, see [INSTALL.md](INSTALL.md).**
 
 ## Status
 
 | Part | State |
 |---|---|
-| RetroArch AI Service protocol (Speech mode) | done, checked against RetroArch source |
-| Tile reader (゛/゜ above the line, boxes, ▶ cursor) | done, tested on synthetic screens |
-| **Gen 1 font table** (`font/gen1_jp.json`) | **needs real frames from the game** |
-| Offline TTS: static aarch64 `open_jtalk` + dictionary + voice | done (works on dArkOS and Knulli, no apt) |
-| dArkOS installer + systemd service | written, not yet run on hardware |
+| RetroArch AI Service (Speech mode, no pause) | works on the RGB20 Pro (dArkOS) |
+| Single-button trigger (L2) via RetroArch network command | new in 0.3.0 |
+| Gen 1 font (`font/gen1_jp.json`, 129 tiles) | all kana, marks, menus; some digits and symbols still missing |
+| Offline voices: tohoku (default), mei, nitech | static aarch64 `open_jtalk`, no apt needed |
+| Settings file on the SD card | volume, voice, speed, button, captures |
 | Knulli (RG35XXSP) | todo |
 
 ## What it reads
 
 - **Dialogue box** (bottom of the screen): the whole box, for example 「やせいの ピカチュウが とびだしてきた！」.
-- **Menus with a ▶ cursor**: any dialogue above the menu, then the **selected item** (for example 「どうぐ」). Your son can move the cursor and press the button to hear what he's on.
-- **Anything else**: all the text on the screen, top to bottom.
+- **Menus with a ▶ cursor**: any message, then the **selected option** (for example 「たたかう」). Move the cursor, press L2, and hear what it's on.
+- **Anything else** (e.g. the Pokédex): all the text on screen, top to bottom.
 
-## Install on dArkOS (RGB20 Pro)
+Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're added.
 
-See **[INSTALL.md](INSTALL.md)** for step-by-step instructions. In short: copy the release zip's contents to `ports`, run **Install Pokemon Urusai** from Ports, then press **Select + Y** in the game.
+## Layout
 
-## Building the font (once)
+| Path | What |
+|---|---|
+| `urusai/server.py` | AI Service endpoint, settings, captures |
+| `urusai/reader.py` | tiles → text (゛/゜ above the line, boxes, ▶ cursor, shared へ/ヘ tiles) |
+| `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |
+| `urusai/font.py` | tile → label table |
+| `urusai/tts.py`, `audio.py`, `normalize.py` | Open JTalk, loudness, text clean-up for speech |
+| `urusai/button.py` | gamepad watcher → RetroArch `AI_SERVICE` command |
+| `urusai/settings.py` | `urusai_settings.txt` |
+| `font/gen1_jp.json` | the font, built by `tools/build_font.py` from `tests/frames/` |
+| `tests/frames/` | 36 reference frames (160×144) from 青, with expected readings |
+| `install/darkos/` | installer, systemd unit, uninstaller |
 
-Every button press saves the native 160×144 frame and what was read into **`/roms/urusai_captures/`**. That includes presses before the font exists. Play a little, press the button on the screens below, then copy that folder off the SD card:
+## Adding missing symbols
 
-1. Name entry: the ひらがな page and the カタカナ page
-2. A few dialogue boxes with が / ぱ / ポケモン
-3. The start menu (ずかん, ポケモン, どうぐ…)
-4. A battle message and the battle menu
-
-Then label the tiles:
+Every button press saves the frame and what was read to `urusai_captures/` on the SD card (the newest 50 are kept). To teach new tiles:
 
 ```sh
-tools/learn.py grid  captures/X.png                  # shows the tile grid; ?N = unknown tile
-tools/learn.py label captures/X.png 14:1 "やせいの ピカチュウが" 16:1 "とびだしてきた！"
-tools/learn.py tile  captures/X.png 12:0 "<box>"     # borders, "<cursor>", "<more>"
-tools/learn.py read  captures/X.png --wav test.wav   # check it
+tools/learn.py unknown captures/                    # unknown tiles next to text, with examples
+tools/learn.py grid    captures/X.png               # the tile grid; ?N = unknown tile
+tools/learn.py read    captures/X.png --wav t.wav   # what it would say
 ```
 
-The server reloads `font/gen1_jp.json` automatically when it changes.
+For a permanent fix:
 
-AYN Thor screenshots also work (shaders off, Integer Scale on, Bilinear off). They are downscaled automatically.
-
-## Options
-
-- `--speed 0.95`: speaking speed.
-- **Voice**: drop any `.htsvoice` file into `voice/`. A file named `mei*.htsvoice` (MMDAgent's Mei, a female voice) is preferred automatically.
-- `URUSAI_VERBOSE=1`: log every request.
+1. Copy the frame into `tests/frames/`.
+2. Add its text to `TEXT` / `TILES` (and its reading to `EXPECT`) in `tools/build_font.py`.
+3. Run `tools/build_font.py`. It rebuilds the font and checks every reference frame.
 
 ## Develop
 
 ```sh
-python3 tests/test_pipeline.py      # needs open_jtalk + naist-jdic + a voice on the PC (apt install open-jtalk ...)
-tools/make_release.sh               # builds dist/PokemonUrusai-<ver>.zip with the dictionary
+python3 -m unittest discover -s tests   # needs open_jtalk + naist-jdic on the PC (apt install open-jtalk open-jtalk-mecab-naist-jdic)
+tools/build_font.py                      # rebuild font/gen1_jp.json and check all 36 frames
+tools/make_release.sh                    # dist/PokemonUrusai-<ver>.zip, including the dictionary
 ```
 
 `bin/open_jtalk-aarch64` is a static build of Open JTalk 1.11 with HTS Engine 1.10 (`--host=aarch64-linux-gnu LDFLAGS=-static`).

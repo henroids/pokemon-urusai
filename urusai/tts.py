@@ -5,21 +5,24 @@ import platform
 import subprocess
 import tempfile
 
+from . import audio
+
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOICE_DIR = os.path.join(HERE, "voice")
+SYNTH_GAIN_DB = -3.0     # synthesise with headroom; audio.louder() adds the level back
+SYNTH_MAKEUP = 10 ** (-SYNTH_GAIN_DB / 20)
 
 
 def _first(paths):
     for p in paths:
-        for hit in sorted(glob.glob(p)):
-            if os.path.exists(hit):
-                return hit
+        for hit in sorted(glob.glob(p)) if p else []:
+            return hit
     return None
 
 
 def find_binary():
-    arch = platform.machine()
     return _first([os.environ.get("URUSAI_OPEN_JTALK", ""),
-                   os.path.join(HERE, "bin", "open_jtalk-" + arch),
+                   os.path.join(HERE, "bin", "open_jtalk-" + platform.machine()),
                    "/usr/bin/open_jtalk", "/usr/local/bin/open_jtalk"])
 
 
@@ -29,34 +32,44 @@ def find_dict():
                    "/var/lib/mecab/dic/open-jtalk/naist-jdic"])
 
 
-def find_voice():
-    # A voice dropped into voice/ wins (e.g. mei_normal.htsvoice); then system voices.
+def voices():
+    """Names of the bundled voices, e.g. ['mei', 'mei_happy', 'nitech', 'tohoku', …]."""
+    return sorted(os.path.basename(p)[:-9] for p in glob.glob(os.path.join(VOICE_DIR, "*.htsvoice")))
+
+
+def find_voice(name):
+    """voice/<name>.htsvoice, else any bundled voice, else a system one."""
     return _first([os.environ.get("URUSAI_VOICE", ""),
-                   os.path.join(HERE, "voice", "mei*.htsvoice"),
-                   os.path.join(HERE, "voice", "*.htsvoice"),
+                   os.path.join(VOICE_DIR, "%s.htsvoice" % name),
+                   os.path.join(VOICE_DIR, "*.htsvoice"),
                    "/usr/share/hts-voice/*/*.htsvoice"])
 
 
 class Speaker:
-    def __init__(self, speed=0.95, volume_db=6.0, half_tone=0.0):
+    def __init__(self, voice="tohoku", speed=0.95, volume=200):
         self.binary = find_binary()
         self.dic = find_dict()
-        self.voice = find_voice()
+        self.configure(voice, speed, volume)
         missing = [n for n, v in (("open_jtalk", self.binary), ("dictionary", self.dic),
                                   ("voice", self.voice)) if not v]
         if missing:
             raise RuntimeError("missing: " + ", ".join(missing))
-        self.speed, self.volume_db, self.half_tone = speed, volume_db, half_tone
+
+    def configure(self, voice, speed, volume):
+        self.voice = find_voice(voice)
+        self.speed = min(2.0, max(0.5, float(speed)))
+        self.volume = min(400, max(0, int(volume)))
 
     def wav(self, text):
         fd, out = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
         try:
             cmd = [self.binary, "-x", self.dic, "-m", self.voice, "-ow", out,
-                   "-r", str(self.speed), "-g", str(self.volume_db), "-fm", str(self.half_tone)]
+                   "-r", str(self.speed), "-g", str(SYNTH_GAIN_DB)]
             subprocess.run(cmd, input=text.encode("utf-8"), check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
             with open(out, "rb") as f:
-                return f.read()
+                raw = f.read()
         finally:
             os.unlink(out)
+        return audio.louder(raw, self.volume * SYNTH_MAKEUP)

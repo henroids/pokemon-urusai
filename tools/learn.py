@@ -9,7 +9,7 @@
   learn.py read  SHOT.png [--wav out.wav]    print what the server would say
 
 SHOT.png may be a native 160x144 frame (e.g. from the server's capture folder)
-or an integer-scaled phone screenshot; it is downscaled automatically.
+or a phone screenshot (integer-scaled or stretched); it is reduced automatically.
 """
 import argparse
 import os
