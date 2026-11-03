@@ -6,7 +6,7 @@ The install takes about 10 minutes, once. After that, the reader starts by itsel
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.5.1.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.5.2.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 
@@ -71,6 +71,7 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `menu_voice` | `nitech` | Voice for menu options |
 | `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
+| `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |
 
 **About captures:** each time something is read, the screen and the text are saved. Only the newest `captures_keep` are kept and older ones are deleted automatically, so the folder can't fill up: 50 captures is about 100 KB. They're only useful for fixing misreads. Set it to `0` if you don't need them.

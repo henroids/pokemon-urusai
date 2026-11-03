@@ -110,6 +110,7 @@ class Narrator:
     def __init__(self, speaker, menu_speaker=None, cache_size=64):
         self.position = False  # say 「2ばんめ」 after the selected option
         self.cues = True       # open/close/edge sounds (the selection chime is always on)
+        self.pause_ms = 300    # silence between menu options / choices (text itself flows on)
         self.speaker = speaker
         self.menu_speaker = menu_speaker or speaker
         self.cache = OrderedDict()
@@ -205,7 +206,7 @@ class Narrator:
                 continue
             out += self._synth(piece)
             if i + 1 < len(pieces) and pieces[i + 1][0] != "cue":
-                out += silence(180)
+                out += silence(self.pause_ms)
         return to_wav(out)
 
     def prepare(self, pieces):

@@ -78,6 +78,7 @@ class App:
         n.menu_speaker.configure(s["menu_voice"], s["speed"], s["volume"])
         n.cues = s["sound_cues"] == "on"
         n.position = s["menu_position"] == "on"
+        n.pause_ms = max(0, min(2000, s["option_pause"]))
 
     def refresh(self):
         """Pick up edits to the font or the settings file."""

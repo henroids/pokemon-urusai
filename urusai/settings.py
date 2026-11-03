@@ -17,6 +17,7 @@ DEFAULTS = {
     "menu_voice": "nitech",  # voice for menu options
     "volume": 200,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
     "speed": 0.95,           # 1.0 = normal speaking speed
+    "option_pause": 300,     # milliseconds of silence between menu options / choices
     "captures_keep": 50,     # newest spoken screens kept in urusai_captures (0 = don't save any)
 }
 
@@ -50,6 +51,9 @@ volume = {volume}
 
 # Speaking speed. 1.0 = normal, 0.85 = slower, 1.15 = faster.
 speed = {speed}
+
+# Pause between menu options and choices, in milliseconds (text itself is read without pauses).
+option_pause = {option_pause}
 
 # How many recently read screens to keep in urusai_captures (each is ~2 KB).
 # They're only for fixing misreads; the oldest are deleted. 0 = don't save any.
