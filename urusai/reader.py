@@ -232,7 +232,9 @@ def analyze(labels):
 
 def fix_shared(text):
     """Choose へ/ヘ, り/リ, っ/ッ… from the nearest real letter on each side
-    within the same word (the game draws them with one shared tile)."""
+    within the same word (the game draws them with one shared tile).
+    A tie goes to the letter before it: in 「ャュョッは」 the ッ ends the
+    katakana name and は is a particle."""
     out = list(text)
     for i, ch in enumerate(text):
         if ch not in SHARED:
@@ -244,7 +246,8 @@ def fix_shared(text):
                 j += step
             if 0 <= j < len(text) and text[j] != " ":
                 votes.append(is_kata(text[j]) - is_hira(text[j]))
-        want_kata = sum(votes) > 0
+        total = sum(votes)
+        want_kata = total > 0 if total or not votes else votes[0] > 0
         if want_kata != is_kata(ch):
             out[i] = SHARED[ch]
     return "".join(out)
