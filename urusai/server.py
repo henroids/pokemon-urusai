@@ -78,7 +78,7 @@ class App:
         self.cutting = False        # a hotkey-made request is coming to stop the speech
         self.last_cut = -1e9
         self.can_interrupt = False  # set when the virtual keyboard works
-        self.hold = False           # after a cut: wait until the screen settles before reading
+        self.hold = None            # after a cut: the screen it was cut on (stay quiet until it changes)
         self.queue = collections.deque()  # clips still to say for the current screen…
         self.queue_sig = None             # …and which screen that was
         self.sig = None             # what's on screen now…
@@ -128,8 +128,8 @@ class App:
 
     def want_interrupt(self):
         """A game button was pressed. True = stop the speech now (press the hotkey twice).
-        Like a screen reader: any key stops speech, whatever is being said. Lines cut
-        off before they were finished are read again once the screen settles."""
+        Like a screen reader: any key stops speech, whatever is being said; then
+        only what's new is read."""
         with self.lock:
             now = self.clock()
             if self.cutting and now - self.last_cut > CUT_TIMEOUT:
@@ -139,8 +139,7 @@ class App:
                 return False
             self.cutting, self.last_cut = True, now
             self.queue.clear()
-            self.narrator.forget_unfinished()  # what was cut off counts as not said
-            self.hold = True                    # e.g. mashing A: stay quiet until the text settles
+            self.hold = self.sig                # a press means "stop": quiet until the screen changes
             return True
 
     # ---- one frame from RetroArch ------------------------------------------
@@ -198,18 +197,21 @@ class App:
                                          or now - self.pending >= PRESS_TIMEOUT):
             self.pending = None
             self.spoken_sig = sig
-            return self._start(n.plan(reading, repeat=True), reading, img, sig, settled=True)
+            return self._start(n.plan(reading, repeat=True), reading, img, sig)
         # 4. automatic reading
         auto = self.settings["auto_read"] == "on" and not self.muted
-        if self.hold and (reading.kind != "dialogue" or settled):
-            self.hold = False
+        if self.hold is not None:
+            if sig == self.hold:
+                return None       # the press stopped this screen: stay quiet
+            self.hold = None      # something new (e.g. the box went on printing): read it
         if reading.kind == "dialogue":
-            if self.hold:
+            if not settled:
+                n.prepare_printed_lines(reading)  # get line 1 ready while line 2 prints
                 return None
-            chunks = n.plan(reading, settled=settled)
+            chunks = n.plan(reading, settled=True)
             if chunks and auto:
                 self.spoken_sig = sig
-                return self._start(chunks, reading, img, sig, settled)
+                return self._start(chunks, reading, img, sig)
             if chunks:
                 n.prepare(chunks)
         elif ready and sig != self.spoken_sig:
@@ -218,7 +220,7 @@ class App:
                 chunks = [c for c in chunks if all(p[0] == "cue" for p in c)]  # just "menu closed"
             if auto:
                 self.spoken_sig = sig
-                return self._start(chunks, reading, img, sig, settled=True)
+                return self._start(chunks, reading, img, sig)
             if reading.kind in ("other", "none"):
                 n.remember(reading)  # the menu closed: forget it
             n.prepare(n.plan(reading, repeat=True))  # ready for the button
@@ -226,9 +228,9 @@ class App:
             n.prepare(n.plan(reading))  # still settling: get its speech ready
         return None
 
-    def _start(self, chunks, reading, img, sig, settled):
+    def _start(self, chunks, reading, img, sig):
         """Say the first chunk now, queue the rest. None = nothing to say."""
-        self.narrator.remember(reading, settled, chunks)
+        self.narrator.remember(reading)
         if not chunks:
             return None
         self.queue = collections.deque(chunks[1:])

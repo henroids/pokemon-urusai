@@ -24,9 +24,10 @@ Everything runs on the handheld, with no internet and no PC:
 
 ## What it reads
 
-- **Dialogue** (the box at the bottom): each line as soon as it has printed. When the box scrolls one line, **only the new line** is read.
+- **Dialogue** (the box at the bottom): the box in one go, lines back to back, as soon as it has printed (line 1's speech is made while line 2 prints). When the box scrolls one line, **only the new line** is read.
+- **Numbers** are read with Japanese counters (1こ いっこ, 3びき さんびき, 8ほん はっぽん) and game formats put into words (HP 15/20 → 20のうち15, No.007 → 7ばん, ×3 → 3こ, 12:34 → 12じかん34ぷん). Open JTalk only applies counter sound changes to kanji, so kana counters after a number are converted.
 - **Menus and questions**: the question, an "open" sound, then every option in the menu voice, with a sound after the selected one: **はい "biiing–booong"**, **いいえ a buzzer "eerrrr"**, other options a short "pip". Moving the cursor reads **just the new option**, with a low "tok" at the first/last one. A "close" sound when the menu goes away. Big grids (name entry) read only the selected letter.
-- **Stops when you move on**: menus are read one option at a time, so moving the cursor or closing the menu drops the rest. Any game button pressed mid-speech cuts off whatever is being said (dialogue, menu or announcement), like a screen reader; lines cut off are read again if still on screen, after the text settles: the reader presses RetroArch's AI hotkey twice, and the new reply replaces the clip that's playing.
+- **Stops when you move on**: menus are read one option at a time, so moving the cursor or closing the menu drops the rest. Any game button pressed mid-speech cuts off whatever is being said (dialogue, menu or announcement), like a screen reader; after a press, the same screen stays quiet and only what's new is read: the reader presses RetroArch's AI hotkey twice, and the new reply replaces the clip that's playing.
 - **Instant**: speech is cached in memory and on disk (`/opt/urusai/cache`), made in the background as text appears, and common menu words are made at start-up.
 - **Tap L2**, any time: the whole screen again, once, including screens that aren't read automatically (e.g. the Pokédex). **Double-tap**: 「よみあげ オフ/オン」.
 - Text is read in one flow (no pauses at the game's word spaces). The spaces are still used to check particles: a は/へ ending a phrase must sound "wa"/"e", and if Open JTalk misreads one (e.g. かれは as 枯れ葉 "kareha") it's corrected and re-spoken.

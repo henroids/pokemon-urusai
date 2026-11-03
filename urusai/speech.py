@@ -3,8 +3,10 @@
 What is said (Narrator.plan) comes as *chunks*, short clips played one
 after another. Between chunks RetroArch sends a fresh frame, so if the
 screen moved on (cursor moved, menu closed) the rest is dropped:
-  * Dialogue: a line is read as soon as it's printed (line 1 while line 2
-    is still typing). After a scroll, only the new line.
+  * Dialogue: once the box has printed, its new lines are read back to back
+    in one clip (line 1's speech is made in the background while line 2 is
+    still printing, so only line 2 is left to make). After a scroll, only
+    the new line.
   * Menus: the question (dialogue voice), an "open" sound, then each option
     as its own chunk in the menu voice, with a sound after the selected one:
     はい "biiing-booong", いいえ a buzzer, anything else a "pip". A cursor
@@ -25,6 +27,8 @@ from . import normalize
 from .sounds import cue, silence, to_wav, trim, wav_samples
 
 MAX_OPTIONS = 12   # bigger "menus" (the name grid) just say the selection
+JOIN_LEAD = 48000 * 40 // 1000   # trimmed from the start of a following line…
+JOIN_TAIL = 48000 * 60 // 1000   # …and the end of the line before: ~30 ms between lines
 CACHE_VERSION = 3  # bump when synthesis or trimming changes
 YES, NO = "はい", "いいえ"
 
@@ -149,7 +153,6 @@ class Narrator:
     def reset(self):
         self.spoken_lines = []  # dialogue lines already read (for scroll detection)
         self.spoken_menu = None  # options of the menu last read in full
-        self._before = None      # memory before the speech now playing (undone if it's cut off)
 
     def box_closed(self):
         """The message box went away: the next box is new even if its text repeats."""
@@ -166,13 +169,17 @@ class Narrator:
             chunks.append([("cue", "close")])
         lines = self._lines_to_read(reading, repeat, settled)
         if lines:
-            chunks.append([("talk", " ".join(lines))])
+            chunks.append([("talk", line) for line in lines])  # one clip, lines joined tightly
         if reading.kind == "menu":
             chunks += self._menu_chunks(reading, repeat)
         elif reading.kind == "other" and repeat:
             chunks.append([("talk", " ".join(reading.other))])
         chunks = [[p for p in c if self._audible(p)] for c in chunks]
-        return [c for c in chunks if any(p[0] != "gap" for p in c)]
+        chunks = [c for c in chunks if any(p[0] != "gap" for p in c)]
+        if len(chunks) > 1 and chunks[0] == [("cue", "close")]:
+            chunks[1:2] = [chunks[0] + chunks[1]]  # "menu closed" + what came next, one clip
+            chunks.pop(0)
+        return chunks
 
     @staticmethod
     def _audible(piece):
@@ -185,8 +192,14 @@ class Narrator:
         if repeat:
             return lines
         if reading.kind == "dialogue" and not settled:
-            lines = lines[:-1]  # the last line may still be typing
+            return []  # still printing: wait, so the box is read in one go
         return new_lines(lines, self.spoken_lines)
+
+    def prepare_printed_lines(self, reading):
+        """While a box prints, make the speech of the lines already finished."""
+        done = new_lines(reading.dialogue[:-1], self.spoken_lines)
+        if done:
+            self.prepare([[("talk", line) for line in done]])
 
     def _menu_chunks(self, reading, repeat):
         opts = reading.options
@@ -210,22 +223,12 @@ class Narrator:
             chunks.append(chunk)
         return chunks
 
-    def remember(self, reading, settled=True, chunks=None):
+    def remember(self, reading):
         """Call when a reading is handled, so the next plan knows what was said.
-        If what's being said gets cut off, forget_unfinished() undoes this."""
-        self._before = (list(self.spoken_lines), self.spoken_menu) if chunks else None
-        lines = reading.dialogue if settled or reading.kind != "dialogue" else reading.dialogue[:-1]
-        if lines:
-            self.spoken_lines = list(lines)
+        (Speech cut off by a button counts as said: the press meant "move on".)"""
+        if reading.dialogue:
+            self.spoken_lines = list(reading.dialogue)
         self.spoken_menu = frozenset(reading.options) if reading.kind == "menu" else None
-
-    def forget_unfinished(self):
-        """Speech was cut off: its dialogue lines count as not read, so they're read
-        again if they're still on screen. (A menu stays known, so moving the cursor
-        still just says the new option.)"""
-        if self._before is not None:
-            self.spoken_lines = self._before[0]
-            self._before = None
 
     # ---- making the sound --------------------------------------------------
     def _speaker(self, kind):
@@ -257,8 +260,15 @@ class Narrator:
             elif piece[0] == "cue":
                 out += silence(60) + cue(piece[1]) + silence(60)
             else:
-                out += self._synth(piece)
-                if i + 1 < len(chunk) and chunk[i + 1][0] in ("talk", "menu"):
+                samples = self._synth(piece)
+                nxt = chunk[i + 1][0] if i + 1 < len(chunk) else None
+                prev = chunk[i - 1][0] if i else None
+                if piece[0] == "talk" and prev == "talk":
+                    samples = samples[JOIN_LEAD:]   # lines of one box run straight on
+                if piece[0] == "talk" and nxt == "talk":
+                    samples = samples[:-JOIN_TAIL] if len(samples) > JOIN_TAIL else samples
+                out += samples
+                if nxt in ("talk", "menu") and not (piece[0] == "talk" and nxt == "talk"):
                     out += silence(self.pause_ms)
         return to_wav(out)
 

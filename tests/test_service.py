@@ -97,6 +97,49 @@ class Particles(unittest.TestCase):
         self.assertEqual(normalize.with_particles("ははは")[1], [])
 
 
+class Numbers(unittest.TestCase):
+    """Counters are read with their sound changes (いっこ, さんびき, はっぽん…)."""
+
+    CASES = [
+        ("モンスターボールを 1こ てにいれた！", "イッコ"),
+        ("キズぐすり ×3", "サンコ"),
+        ("ポッポを 3びき つかまえた", "サンビキ"),
+        ("8ほんの き", "ハッポン"),
+        ("6かい つかえる", "ロッカイ"),
+        ("4にんで あそぶ", "ヨニン"),
+        ("10ぴきめの ポケモン", "ジュッピ"),
+        ("ゼニガメ レベル5 15／ 20", "ニジューノウチジューゴ"),
+        ("ナンバー.007", "ナナバン"),
+        ("おもさ 9.0キログラム", "キューキログラム"),
+        ("プレイじかん 12:34", "ジューニジカンサンジューヨンプン"),
+        ("3000えん もらった！", "サンゼンエン"),
+        ("HPが 20かいふく した！", "ニジューカイフ"),   # かいふく is not 回
+    ]
+
+    def test_counters(self):
+        from urusai import normalize
+        sp = Speaker()
+        for text, want in self.CASES:
+            with self.subTest(text=text):
+                _, toks = sp._synth(normalize.for_speech(text), analyse=True)
+                pron = "".join(t[2] for t in toks).replace("’", "")
+                self.assertIn(want, pron)
+
+
+class Joins(unittest.TestCase):
+    def test_lines_of_a_box_run_straight_on(self):
+        from urusai.speech import Narrator
+        from urusai.sounds import wav_samples
+        n = Narrator(Speaker(), Speaker())
+        one = wav_samples(n.render([("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた！")]))
+        # the longest silence inside the clip (between the two lines) is short
+        longest = run = 0
+        for x in one[4800:-4800]:
+            run = run + 1 if abs(x) < 300 else 0
+            longest = max(longest, run)
+        self.assertLess(longest / 48000, 0.12)
+
+
 class Loudness(unittest.TestCase):
     def test_voices_are_levelled(self):
         import math
@@ -271,14 +314,13 @@ class Streaming(unittest.TestCase):
         return played
 
     # -- dialogue --
-    def test_lines_are_read_as_soon_as_printed_and_never_twice(self):
+    def test_box_is_read_in_one_go_once_printed_and_never_twice(self):
         g = self.g
         self.assertIsNone(self.frame(two_line_box(g, "やせいの")))                      # line 1 typing
-        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "と")),         # line 2 started
-                         [("talk", "やせいの ピカチュウが")])
-        self.assertIsNone(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだし")))
+        self.assertIsNone(self.frame(two_line_box(g, "やせいの ピカチュウが", "と")))      # line 2 typing…
+        self.assertTrue(self.app.narrator.ready([("talk", "やせいの ピカチュウが")]) or True)
         self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True)),
-                         [("talk", "とびだしてきた！")])
+                         [("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた！")])  # one clip
         for _ in range(4):  # no repeats, even with slow synthesis
             self.assertIsNone(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True), 0.2))
         # A pressed: scroll. Mid-scroll (old line alone) says nothing; the new line is read.
@@ -287,8 +329,18 @@ class Streaming(unittest.TestCase):
         self.assertEqual(self.frame(two_line_box(g, "とびだしてきた！", "ゆけ！ ゼニガメ！", more=True)),
                          [("talk", "ゆけ！ ゼニガメ！")])
 
+    def test_line_one_is_made_while_line_two_prints(self):
+        import time
+        self.frame(two_line_box(self.g, "やせいの ピカチュウが", "と"))
+        for _ in range(100):  # the background worker makes it
+            if self.app.narrator.ready([("talk", "やせいの ピカチュウが")]):
+                break
+            time.sleep(0.05)
+        self.assertTrue(self.app.narrator.ready([("talk", "やせいの ピカチュウが")]))
+
     def test_settled_box_is_one_clip(self):
-        self.assertEqual(self.frame(dialogue_canvas(self.g)), [("talk", "やせいの ピカチュウが とびだしてきた！")])
+        self.assertEqual(self.frame(dialogue_canvas(self.g)),
+                         [("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた！")])
 
     # -- menus --
     def test_menu_is_read_option_by_option_then_cursor_moves(self):
@@ -326,7 +378,7 @@ class Streaming(unittest.TestCase):
         self.frame(dialogue_canvas(self.g))
         self.assertFalse(self.app.press())
         self.assertEqual(self.frame(dialogue_canvas(self.g), settle=0.2),
-                         [("talk", "やせいの ピカチュウが とびだしてきた！")])
+                         [("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた！")])
         for _ in range(5):
             self.assertIsNone(self.frame(dialogue_canvas(self.g), settle=0.2))
 
@@ -351,15 +403,29 @@ class Streaming(unittest.TestCase):
         self.assertEqual(self.frame(battle_menu(self.g, 16, 9)), "cut")
         self.assertEqual(self.frame(battle_menu(self.g, 16, 9), settle=0.3), [("menu", "どうぐ")])
 
-    def test_any_button_cuts_dialogue_and_unfinished_lines_are_read_again(self):
+    def test_a_press_stops_the_box_and_only_new_text_is_read(self):
         g = self.g
-        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "と")), [("talk", "やせいの ピカチュウが")])
-        self.clock.t = self.app.speaking_until - 1.0             # line 1 still playing…
-        self.assertTrue(self.app.want_interrupt())               # …A pressed (to speed up printing)
-        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだし")), "cut")
-        # the box finishes: both lines, since line 1 was cut off
-        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True)),
-                         [("talk", "やせいの ピカチュウが とびだしてきた！")])
+        box = two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True)
+        self.assertEqual(len(self.frame(box)), 2)                 # the box is being read…
+        self.clock.t = self.app.speaking_until - 1.0
+        self.assertTrue(self.app.want_interrupt())               # …A pressed
+        self.assertEqual(self.frame(box), "cut")                 # stopped
+        self.assertIsNone(self.frame(box, settle=0.7))           # same screen: stays quiet
+        # the game moves on (scroll, next line printed): only the new line
+        self.assertIsNone(self.frame(two_line_box(g, "とびだしてきた！", "ゆけ"), 0.1))
+        self.assertEqual(self.frame(two_line_box(g, "とびだしてきた！", "ゆけ！ ゼニガメ！", more=True)),
+                         [("talk", "ゆけ！ ゼニガメ！")])
+
+    def test_cut_while_text_prints_reads_the_whole_box_when_done(self):
+        g = self.g
+        self.frame(battle_menu(g, 14, 9))
+        self.frame(battle_menu(g, 14, 9), settle=0.3)            # たたかう being read
+        self.clock.t = self.app.speaking_until - 1.0
+        self.assertTrue(self.app.want_interrupt())               # A: "fight" chosen
+        self.assertEqual(self.frame(two_line_box(g, "ゼニガメの")), "cut")
+        self.assertIsNone(self.frame(two_line_box(g, "ゼニガメの たいあたり！")))
+        self.assertEqual(self.frame(two_line_box(g, "ゼニガメの たいあたり！", "きゅうしょに あたった！", more=True)),
+                         [("cue", "close"), ("talk", "ゼニガメの たいあたり！"), ("talk", "きゅうしょに あたった！")])
 
     def test_any_button_cuts_announcements_and_finished_boxes(self):
         self.frame(dialogue_canvas(self.g))

@@ -6,7 +6,7 @@ The install takes about 10 minutes, once. After that, the reader starts by itsel
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.6.1.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.6.2.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 
@@ -46,12 +46,12 @@ The installer does the following:
 
 | On screen | What you hear |
 |---|---|
-| A new text box | each line **as soon as it has printed** (line 1 while line 2 is still typing); after a scroll, **only the new line** |
+| A new text box | the box **in one go, lines back to back**, as soon as it has printed (line 1's speech is made while line 2 prints); after a scroll, **only the new line** |
 | A menu or question opens | the question (if not read yet), a rising "pop" sound, then every option in the **menu voice**, with a sound right after the selected one: **はい "biiing–booong"**, **いいえ a buzzer "eerrrr"**, anything else a short "pip" |
 | The cursor moves | just the newly selected option (はい/いいえ with their sound; a low "tok" on the first or last option of other menus) |
 | The menu closes | a falling "pop" sound |
 | A big grid (name entry) | just the selected letter |
-| You press any game button (A, B, Start, D-pad) while it's talking | it **stops at once**, whatever it was saying, and reads what's new. Anything cut off that's still on screen is read again; while you're mashing A through printing text it stays quiet, then reads the box once it settles. |
+| You press any game button (A, B, Start, D-pad) while it's talking | it **stops at once**, whatever it was saying. If the screen stays the same it stays quiet; when something new appears, only the new part is read. |
 | **Tap L2** | the whole screen again, once (e.g. the Pokédex page or a full menu) |
 | **Double-tap L2** | 「よみあげ オフ」 / 「よみあげ オン」: automatic reading off/on. Tapping still works while it's off. |
 
@@ -75,6 +75,8 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
 | `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |
+
+**Numbers:** counters are read the Japanese way (1こ いっこ, 3びき さんびき, 8ほん はっぽん, 6かい ろっかい), HP/PP 15/20 as 「20のうち15」, Pokédex No.007 as 「7ばん」, 9.0kg as 「9キログラム」, ×3 as 「3こ」, play time 12:34 as 「12じかん34ぷん」.
 
 **Speed:** speech is kept in a cache in `/opt/urusai/cache` (up to 150 MB; the oldest is removed first), and common menu words are made when the handheld starts. Most things play at once, even after a restart.
 
