@@ -88,9 +88,10 @@ class RealFrames(unittest.TestCase):
 
 class Speech(unittest.TestCase):
     def test_normalize(self):
-        self.assertEqual(normalize.for_speech("ニドラン♂‥‥ まって！"), "ニドランオス、　まって！")
+        self.assertEqual(normalize.for_speech("ニドラン♂‥‥ まって！"), "ニドランオス、まって！")
         self.assertEqual(normalize.for_speech("オーキド『まー！"), "オーキド、まー！")
-        self.assertEqual(normalize.for_speech("ナンバー.007 0.5メートル"), "ナンバー007　0.5メートル")
+        self.assertEqual(normalize.for_speech("ナンバー.007 0.5メートル"), "ナンバー007、0.5メートル")
+        self.assertEqual(normalize.for_speech("では はじめに きみの なまえを"), "でははじめにきみのなまえを")
 
     def test_shared_tiles_follow_neighbours(self):
         self.assertEqual(reader.fix_shared("へンりー"), "ヘンリー")
