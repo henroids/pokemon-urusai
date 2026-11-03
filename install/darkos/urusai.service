@@ -4,7 +4,7 @@ After=local-fs.target
 
 [Service]
 Type=simple
-User=@USER@
+User=root
 WorkingDirectory=@DEST@
 ExecStart=/usr/bin/python3 -m urusai.server --port 4404 --capture @CAPTURE@
 Restart=on-failure

@@ -23,7 +23,7 @@ It runs entirely on the handheld. RetroArch's **AI Service** sends the frame to 
 
 ## Install on dArkOS (RGB20 Pro)
 
-See **[INSTALL.md](INSTALL.md)** for step-by-step instructions. In short: copy the release zip's contents to `ports`, run **Install Pokemon Urusai** from Ports, then bind RetroArch's *AI Service* hotkey and save the config.
+See **[INSTALL.md](INSTALL.md)** for step-by-step instructions. In short: copy the release zip's contents to `ports`, run **Install Pokemon Urusai** from Ports, then press **Select + Y** in the game.
 
 ## Building the font (once)
 

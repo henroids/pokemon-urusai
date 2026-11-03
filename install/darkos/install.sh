@@ -14,11 +14,14 @@ USER_NAME="${URUSAI_USER:-ark}"
 HOME_DIR="$(getent passwd "$USER_NAME" | cut -d: -f6)"
 CAPTURE_DIR="${URUSAI_CAPTURE_DIR:-/roms/urusai_captures}"
 TTY=/dev/tty1
+LOG="${URUSAI_LOG:-/roms/urusai_install.log}"
+: > "$LOG" 2>/dev/null || LOG=/tmp/urusai_install.log
 
-say() { echo "$*"; [ -w "$TTY" ] && echo "$*" > "$TTY"; }
-die() { say "ERROR: $*"; sleep 8; exit 1; }
+say() { echo "$*"; echo "$*" >> "$LOG"; [ -w "$TTY" ] && echo "$*" > "$TTY"; }
+die() { say "ERROR: $*"; say "Please send $LOG"; sleep 12; exit 1; }
 
-say "=== Pokemon Urusai installer ==="
+say "=== Pokemon Urusai installer ($(date)) ==="
+say "source: $SRC  user: $USER_NAME  home: $HOME_DIR"
 [ "$(uname -m)" = "aarch64" ] || die "this build is for aarch64 (got $(uname -m))"
 command -v python3 >/dev/null || die "python3 not found. Connect Wi-Fi once and run: sudo apt install python3-minimal"
 for f in urusai/server.py bin/open_jtalk-aarch64 dic/sys.dic; do
@@ -57,11 +60,13 @@ set_cfg() {  # file key value
 found=0
 for cfg in "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroarch32/retroarch.cfg"; do
   [ -f "$cfg" ] || continue
-  cp -n "$cfg" "$cfg.urusai-backup"
+  [ -f "$cfg.urusai-backup" ] || cp "$cfg" "$cfg.urusai-backup"
   set_cfg "$cfg" ai_service_enable true
   set_cfg "$cfg" ai_service_mode 1
   set_cfg "$cfg" ai_service_url "http://127.0.0.1:4404/"
   set_cfg "$cfg" ai_service_pause true
+  # Read-aloud button: Select (dArkOS hotkey enable) + Y. Y is unused by Game Boy games.
+  set_cfg "$cfg" input_ai_service_btn "${URUSAI_BUTTON:-3}"
   chown "$USER_NAME" "$cfg"
   say "  updated $cfg"
   found=1
@@ -69,7 +74,6 @@ done
 [ "$found" = 1 ] || say "  (no retroarch.cfg found — set AI Service by hand, see README)"
 
 say ""
-say "Done! Last step, in RetroArch (once):"
-say "  Settings > Input > Hotkeys > AI Service  -> pick a button"
-say "  Main Menu > Configuration File > Save Current Configuration"
+say "Done! In a game, press SELECT + Y to hear the text."
+say "(log: $LOG)"
 sleep 6

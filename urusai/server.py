@@ -57,7 +57,10 @@ class App:
             self._reload_font_if_changed()
             text = reader.read_image(self.font, img)
             spoken = normalize.for_speech(text)
-            self._capture(img, text)
+            try:
+                self._capture(img, text)
+            except OSError as e:  # never let a full/read-only SD card stop the speech
+                sys.stderr.write("urusai: capture failed: %r\n" % e)
             if not spoken:
                 return {"error": NO_TEXT}
             resp = {}
@@ -135,6 +138,15 @@ def main(argv=None):
     a = p.parse_args(argv)
     app = App(a.font, a.capture, speaker=Speaker(speed=a.speed))
     srv = ThreadingHTTPServer((a.host, a.port), make_handler(app))
+    if a.capture:  # a breadcrumb on the SD card so you can see the reader is running
+        try:
+            os.makedirs(a.capture, exist_ok=True)
+            with open(os.path.join(a.capture, "STATUS.txt"), "w", encoding="utf-8") as f:
+                f.write("Pokemon Urusai %s started %s\nport %d, %d font tiles, voice %s\n" % (
+                    __import__("urusai").__version__, datetime.datetime.now().isoformat(timespec="seconds"),
+                    a.port, len(app.font.table), os.path.basename(app.speaker.voice)))
+        except OSError as e:
+            sys.stderr.write("urusai: cannot write status: %r\n" % e)
     sys.stderr.write("urusai: listening on http://%s:%d (%d tiles, voice %s)\n"
                      % (a.host, a.port, len(app.font.table), os.path.basename(app.speaker.voice)))
     srv.serve_forever()
