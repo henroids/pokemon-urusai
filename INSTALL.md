@@ -1,12 +1,12 @@
 # Installing Pokémon Urusai on the RGB20 Pro (dArkOS)
 
-**The text is read aloud automatically** as it appears: dialogue, and menu choices as the cursor moves. **L2** says it again. The game keeps running while it talks.
+**The text is read aloud automatically** as it appears: dialogue, and menu choices as the cursor moves. **Tap L2** to hear it again; **double-tap L2** to switch automatic reading off or on. The game keeps running while it talks.
 
 The install takes about 10 minutes, once. After that, the reader starts by itself every time the handheld boots. It needs no Wi-Fi and no PC.
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.4.1.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.5.0.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 
@@ -47,10 +47,12 @@ The installer does the following:
 | On screen | What you hear |
 |---|---|
 | A new text box | the box; after it scrolls, **only the new line** |
-| A menu or question opens | the question (if not read yet), then every option in the **menu voice**, with a **chime ("biiing–booong") right after the one that's selected** |
-| The cursor moves | just the newly selected option |
+| A menu or question opens | a rising "pop" sound, the question (if not read yet), then every option in the **menu voice**, with a **"biiing–booong" right after the selected one** |
+| The cursor moves | just the newly selected option (a low "tok" on the first or last one) |
+| The menu closes | a falling "pop" sound |
 | A big grid (name entry) | just the selected letter |
-| **L2** (any time) | the whole screen again, e.g. the Pokédex page or a full menu |
+| **Tap L2** | the whole screen again, once (e.g. the Pokédex page or a full menu) |
+| **Double-tap L2** | 「よみあげ オフ」 / 「よみあげ オン」: automatic reading off/on. Tapping still works while it's off. |
 
 If nothing is read after starting a game, press **L2** once (or **Select + Y**). **Select + Y** also switches the reader off and on.
 
@@ -62,10 +64,12 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 |---|---|---|
 | `auto_read` | `on` | Read new text and menu choices automatically. `off` = only when you press the button. |
 | `autostart` | `on` | Switch the reader on by itself when a game starts |
-| `button` | `L2` | "Say it again": `L1 R1 L2 R2 L3 R3 SELECT START`, or `off` |
+| `button` | `L2` | Tap = say it again, double tap = reading off/on: `L1 R1 L2 R2 L3 R3 SELECT START`, or `off` |
+| `sound_cues` | `on` | Sounds when a menu opens or closes and at the first/last option (the selection chime is always on) |
+| `menu_position` | `off` | Say the position after the selected option, e.g. 「2ばんめ」 |
 | `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy` (female) or `nitech` (male) |
 | `menu_voice` | `nitech` | Voice for menu options |
-| `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. It's limited, so it never crackles. |
+| `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |
 

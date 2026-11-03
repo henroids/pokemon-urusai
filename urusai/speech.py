@@ -1,9 +1,10 @@
 """Decide what to say for a screen, and say it quickly.
 
   * Dialogue: when the box scrolls up one line, only the new line is read.
-  * Menus: the question (dialogue voice), then every option in the menu
-    voice with a chime ("biiing-booong") right after the selected one. Moving the cursor in the
-    same menu says just the new choice.
+  * Menus: an "open" cue, the question (dialogue voice), then every option
+    in the menu voice with a chime ("biiing-booong") right after the selected
+    one. Moving the cursor says just the new choice (+ a low "tok" on the
+    first/last option). A falling cue when the menu closes.
   * Speech is synthesised in the background as soon as text appears, so a
     request usually finds it ready (cache keyed by voice + text).
 """
@@ -55,15 +56,32 @@ def chime(notes=((1318.5, 0.0), (1046.5, 0.30)), length=0.85, level=8000):
     return array.array("h", (int(level * x / peak) for x in out))
 
 
-_CHIME = None
+def blip(freqs, ms=70, level=7000, gap_ms=10):
+    """Short tones in a row: a quick, quiet UI sound."""
+    out = array.array("h")
+    n, fade = RATE * ms // 1000, RATE * 6 // 1000
+    for f in freqs:
+        for i in range(n):
+            env = min(1.0, i / fade, (n - i) / fade)
+            out.append(int(level * env * math.sin(2 * math.pi * f * i / RATE)))
+        out += silence(gap_ms)
+    return out
 
 
-def beep():
-    """The selection marker (cached: it's the same every time)."""
-    global _CHIME
-    if _CHIME is None:
-        _CHIME = chime()
-    return _CHIME
+_CUES = {}
+CUE_SOUNDS = {
+    "select": chime,                                    # biiing-booong: the selected option
+    "open": lambda: blip((784, 1175)),                  # rising: a menu opened
+    "close": lambda: blip((1175, 784)),                 # falling: the menu closed
+    "edge": lambda: blip((392,), ms=60, level=6000),    # low tok: first/last option
+}
+
+
+def cue(name):
+    """A sound cue (cached: they never change)."""
+    if name not in _CUES:
+        _CUES[name] = CUE_SOUNDS[name]()
+    return _CUES[name]
 
 
 def to_wav(samples):
@@ -77,9 +95,10 @@ def to_wav(samples):
 
 
 def new_lines(lines, spoken):
-    """Lines not yet read: if the box scrolled (its first lines are the
-    last ones we read), keep only what's new. Same box again -> all of it."""
-    for k in range(min(len(lines) - 1, len(spoken)), 0, -1):
+    """Lines not read yet. When the box scrolls, its first lines are the last
+    ones we read: drop them. Nothing new (e.g. mid-scroll, the old line alone)
+    gives []. The "say it again" button doesn't use this."""
+    for k in range(min(len(lines), len(spoken)), 0, -1):
         if lines[:k] == spoken[-k:]:
             return lines[k:]
     return lines
@@ -89,6 +108,8 @@ class Narrator:
     """Plans utterances and renders them with two Speakers (dialogue, menu)."""
 
     def __init__(self, speaker, menu_speaker=None, cache_size=64):
+        self.position = False  # say 「2ばんめ」 after the selected option
+        self.cues = True       # open/close/edge sounds (the selection chime is always on)
         self.speaker = speaker
         self.menu_speaker = menu_speaker or speaker
         self.cache = OrderedDict()
@@ -101,40 +122,54 @@ class Narrator:
 
     def reset(self):
         self.spoken_dialogue = []   # dialogue lines we last read
-        self.spoken_menu = None     # (options tuple) we last read in full
+        self.spoken_menu = None     # options of the menu we last read in full
+
+    def box_closed(self):
+        """The message box went away: the next box is new even if its text repeats."""
+        self.spoken_dialogue = []
 
     # ---- planning -------------------------------------------------------
     def plan(self, reading, repeat=False):
-        """Pieces to say for this reading: ('talk'|'menu', text) or ('beep',).
+        """Pieces to say for this reading: ('talk'|'menu', text) or ('cue', name).
         repeat=True reads everything again (the "say it again" button)."""
         pieces = []
+        if self.cues and self.spoken_menu is not None and reading.kind != "menu" and not repeat:
+            pieces.append(("cue", "close"))
         dialogue = reading.dialogue
         if reading.kind == "menu":
-            opts = tuple(reading.options)
-            same_menu = not repeat and opts == self.spoken_menu
-            if dialogue and (repeat or dialogue != self.spoken_dialogue):
-                pieces.append(("talk", " ".join(dialogue)))
+            opts = reading.options
+            same_menu = not repeat and frozenset(opts) == self.spoken_menu
+            if dialogue:
+                lines = dialogue if repeat else new_lines(dialogue, self.spoken_dialogue)
+                if lines:
+                    pieces.append(("talk", " ".join(lines)))
+            position = [("menu", "%dばんめ" % (reading.selected + 1))] if self.position and len(opts) > 1 else []
             if len(opts) > MAX_OPTIONS or len(opts) == 1:
                 pieces.append(("menu", reading.selected_text))
             elif same_menu:
-                pieces.append(("menu", reading.selected_text))
+                pieces += [("menu", reading.selected_text)] + position
+                if self.cues and len(opts) > 2 and reading.selected in (0, len(opts) - 1):
+                    pieces.append(("cue", "edge"))
             else:
+                if self.cues and not repeat:
+                    pieces.insert(0, ("cue", "open"))
                 for i, opt in enumerate(opts):
                     pieces.append(("menu", opt))
                     if i == reading.selected:
-                        pieces.append(("beep",))
+                        pieces += [("cue", "select")] + position
         elif reading.kind == "dialogue":
             lines = dialogue if repeat else new_lines(dialogue, self.spoken_dialogue)
-            pieces.append(("talk", " ".join(lines)))
+            if lines:
+                pieces.append(("talk", " ".join(lines)))
         elif reading.kind == "other":
             pieces.append(("talk", " ".join(reading.other)))
-        return [p for p in pieces if p[0] == "beep" or normalize.for_speech(p[1])]
+        return [p for p in pieces if p[0] == "cue" or normalize.for_speech(p[1])]
 
     def remember(self, reading):
-        """Call after speaking a reading, so the next plan knows what was said."""
+        """Call after a reading was handled, so the next plan knows what was said."""
         if reading.dialogue:
             self.spoken_dialogue = list(reading.dialogue)
-        self.spoken_menu = tuple(reading.options) if reading.kind == "menu" else None
+        self.spoken_menu = frozenset(reading.options) if reading.kind == "menu" else None
 
     # ---- rendering ------------------------------------------------------
     def _speaker(self, kind):
@@ -157,21 +192,25 @@ class Narrator:
                 self.cache.popitem(last=False)
         return samples
 
+    def say(self, text, kind="talk"):
+        """WAV for a short message of our own (e.g. 「よみあげ オフ」)."""
+        return self.render([(kind, text)])
+
     def render(self, pieces):
         """WAV bytes for a plan (uses the cache, synthesises what's missing)."""
         out = array.array("h")
         for i, piece in enumerate(pieces):
-            if piece[0] == "beep":
-                out += silence(60) + beep()  # the chime's own tail is the pause after it
+            if piece[0] == "cue":
+                out += silence(60) + cue(piece[1]) + silence(60)
                 continue
             out += self._synth(piece)
-            if i + 1 < len(pieces) and pieces[i + 1][0] != "beep":
+            if i + 1 < len(pieces) and pieces[i + 1][0] != "cue":
                 out += silence(180)
         return to_wav(out)
 
     def prepare(self, pieces):
         """Synthesise these pieces in the background (latest request first)."""
-        todo = [p for p in pieces if p[0] != "beep"]
+        todo = [p for p in pieces if p[0] != "cue"]
         with self.lock:
             todo = [p for p in todo if self._key(p) not in self.cache]
             self.wanted = todo + [p for p in self.wanted if p not in todo]

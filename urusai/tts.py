@@ -9,8 +9,7 @@ from . import audio
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOICE_DIR = os.path.join(HERE, "voice")
-SYNTH_GAIN_DB = -3.0     # synthesise with headroom; audio.louder() adds the level back
-SYNTH_MAKEUP = 10 ** (-SYNTH_GAIN_DB / 20)
+SYNTH_GAIN_DB = -3.0     # synthesise with headroom; audio.louder() levels and boosts
 
 
 def _first(paths):
@@ -72,4 +71,4 @@ class Speaker:
                 raw = f.read()
         finally:
             os.unlink(out)
-        return audio.louder(raw, self.volume * SYNTH_MAKEUP)
+        return audio.louder(raw, self.volume, level=True)  # every voice equally loud

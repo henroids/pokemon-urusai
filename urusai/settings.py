@@ -10,7 +10,9 @@ DEFAULT_PATH = "/roms/urusai_settings.txt"
 DEFAULTS = {
     "auto_read": "on",       # read new dialogue and menu choices automatically
     "autostart": "on",       # switch the reader on by itself when a game starts
-    "button": "L2",          # "say it again": L1 R1 L2 R2 L3 R3 SELECT START, an evdev code like 0x138, or off
+    "button": "L2",          # tap = say it again, double tap = reading on/off: L1 R1 L2 R2 L3 R3 SELECT START, or off
+    "sound_cues": "on",      # sounds when a menu opens/closes and at the first/last option
+    "menu_position": "off",  # say 「2ばんめ」 after the selected option
     "voice": "tohoku",       # dialogue voice, a file in voice/: tohoku, tohoku_happy, mei, mei_happy, nitech
     "menu_voice": "nitech",  # voice for menu options
     "volume": 200,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
@@ -28,9 +30,16 @@ auto_read = {auto_read}
 # (otherwise press the button, or Select + Y, once per game)
 autostart = {autostart}
 
-# "Say it again" button — reads the whole screen again (no Select needed):
+# Button (no Select needed): tap = say it again, double tap = reading off/on.
 #   L1 R1 L2 R2 L3 R3 SELECT START, or off
 button = {button}
+
+# Sounds when a menu opens or closes, and at the first/last option: on / off
+# (the "biiing-booong" after the selected option is always on)
+sound_cues = {sound_cues}
+
+# Say the position after the selected option, e.g. 「2ばんめ」: on / off
+menu_position = {menu_position}
 
 # Voices: tohoku (female), tohoku_happy, mei (female), mei_happy, nitech (male)
 voice = {voice}

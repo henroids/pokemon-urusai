@@ -20,7 +20,8 @@ BUTTONS = {
     "L1": 0x136, "R1": 0x137, "L2": 0x138, "R2": 0x139,
     "SELECT": 0x13A, "START": 0x13B, "MENU": 0x13C, "L3": 0x13D, "R3": 0x13E,
 }
-DEBOUNCE = 0.4
+DEBOUNCE = 0.06       # contact bounce
+DOUBLE_TAP = 0.35     # second press within this = double tap
 
 
 def button_code(name):
@@ -107,3 +108,28 @@ class ButtonWatcher(threading.Thread):
             for fd in fds:
                 os.close(fd)
 
+
+class Taps:
+    """Turns presses into single / double taps. A single tap is reported
+    DOUBLE_TAP seconds after the press, once no second press came."""
+
+    def __init__(self, on_single, on_double, window=DOUBLE_TAP):
+        self.on_single, self.on_double, self.window = on_single, on_double, window
+        self.timer = None
+        self.lock = threading.Lock()
+
+    def press(self):
+        with self.lock:
+            if self.timer is not None:  # second tap in time
+                self.timer.cancel()
+                self.timer = None
+                threading.Thread(target=self.on_double, daemon=True).start()
+                return
+            self.timer = threading.Timer(self.window, self._single)
+            self.timer.daemon = True
+            self.timer.start()
+
+    def _single(self):
+        with self.lock:
+            self.timer = None
+        self.on_single()

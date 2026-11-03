@@ -1,4 +1,4 @@
-"""Make speech louder without harsh clipping.
+"""Level speech to a common loudness, then make it louder without harsh clipping.
 
 Open JTalk already peaks at full scale, so plain gain would distort.
 We apply the gain and then a soft knee: everything below ~50% of full
@@ -32,14 +32,27 @@ def _table():
     return _TABLE
 
 
-def louder(wav_bytes, volume_percent):
-    """Return WAV bytes boosted by volume_percent (100 = unchanged, max 400)."""
-    if volume_percent <= 100:
-        gain = max(0.0, volume_percent / 100.0)
-        if gain == 1.0:
-            return wav_bytes
-    else:
-        gain = min(4.0, volume_percent / 100.0)
+TARGET_RMS = 0.2 * 32768   # about -14 dBFS (speech parts only), the same for every voice
+GATE = 300                 # ignore near-silence when measuring loudness
+
+
+def level_gain(samples):
+    """Gain that brings the speech (not the pauses) to TARGET_RMS."""
+    total = n = 0
+    for s in samples:
+        if s > GATE or s < -GATE:
+            total += s * s
+            n += 1
+    if not n:
+        return 1.0
+    return min(4.0, max(0.25, TARGET_RMS / math.sqrt(total / n)))
+
+
+def louder(wav_bytes, volume_percent, level=False):
+    """Return WAV bytes boosted by volume_percent (100 = unchanged, max 400).
+    level=True first brings the clip to the common loudness (TARGET_RMS)."""
+    if not level and volume_percent == 100:
+        return wav_bytes
     with wave.open(io.BytesIO(wav_bytes)) as w:
         params = w.getparams()
         frames = w.readframes(params.nframes)
@@ -48,6 +61,8 @@ def louder(wav_bytes, volume_percent):
     samples = array.array("h", frames)
     if sys.byteorder == "big":
         samples.byteswap()
+    gain = max(0.0, volume_percent / 100.0) * (level_gain(samples) if level else 1.0)
+    gain = min(4.0, gain)
     table = _table()
     out = array.array("h", [table[RANGE + int(s * gain)] for s in samples])
     if sys.byteorder == "big":

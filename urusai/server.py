@@ -8,7 +8,8 @@ so RetroArch sends the next frame as soon as any speech has finished. That
 stream lets us
   * read new dialogue and menu choices automatically,
   * prepare speech before it's needed (so it plays almost at once),
-  * serve the "say it again" button on the next frame.
+  * serve the button on the next frame: tap = say it again, double tap =
+    auto reading off/on.
 The stream starts with one press of RetroArch's AI Service hotkey; we press
 it ourselves through a virtual keyboard when a game starts or L2 is pressed.
 
@@ -26,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import __version__, pngdec, reader, screen
-from .button import ButtonWatcher
+from .button import ButtonWatcher, Taps
 from .font import Font
 from .settings import Settings
 from .speech import RATE, Narrator
@@ -37,7 +38,9 @@ POLL = 0.15            # seconds between frames while nothing is said
 STABLE_MENU = 0.2      # a menu must sit still this long before it's read
 STABLE_TEXT = 0.6      # dialogue without ▼ must stop changing this long
 PRESS_TIMEOUT = 1.5    # a press is served after this even if text still moves
-STREAM_GAP = 1.2       # no frame for this long (and not speaking) = stream stopped
+STREAM_GAP = 4.0       # no frame for this long (and not speaking) = stream stopped
+SPEECH_MARGIN = 1.5    # RetroArch asks again a little after our speech has played
+BOX_GONE = 0.3         # message box absent this long = the next box is a new one
 
 
 class App:
@@ -54,7 +57,9 @@ class App:
         self.lock = threading.Lock()
         self.last_frame = -1e9      # when RetroArch last sent a frame
         self.speaking_until = -1e9  # when the last speech we sent ends
-        self.pending = None         # time of an unserved button press
+        self.pending = None         # time of an unserved "say it again"
+        self.announce = None        # a message of our own to say next (e.g. 「よみあげ オフ」)
+        self.muted = False          # double tap: auto reading paused
         self.sig = None             # what's on screen now…
         self.stable_since = 0.0     # …and since when
         self.spoken_sig = None      # what we last read aloud
@@ -71,6 +76,8 @@ class App:
         n = self.narrator
         n.speaker.configure(s["voice"], s["speed"], s["volume"])
         n.menu_speaker.configure(s["menu_voice"], s["speed"], s["volume"])
+        n.cues = s["sound_cues"] == "on"
+        n.position = s["menu_position"] == "on"
 
     def refresh(self):
         """Pick up edits to the font or the settings file."""
@@ -82,12 +89,19 @@ class App:
 
     def stream_alive(self, now=None):
         now = self.clock() if now is None else now
-        return now - self.last_frame < STREAM_GAP or now < self.speaking_until + 0.5
+        return now - self.last_frame < STREAM_GAP or now < self.speaking_until + SPEECH_MARGIN
 
     def press(self):
-        """The 'say it again' button. Returns True if the stream must be (re)started."""
+        """Single tap: say it again. Returns True if the stream must be (re)started."""
         with self.lock:
             self.pending = self.clock()
+            return not self.stream_alive()
+
+    def toggle_mute(self):
+        """Double tap: pause/resume auto reading. Returns True if the stream must be started."""
+        with self.lock:
+            self.muted = not self.muted
+            self.announce = "よみあげ オフ" if self.muted else "よみあげ オン"
             return not self.stream_alive()
 
     # ---- one frame from RetroArch ------------------------------------------
@@ -96,43 +110,61 @@ class App:
         img = screen.to_gb_frame(pngdec.decode(base64.b64decode(req["image"])))
         with self.lock:
             now = self.clock()
-            fresh = not self.stream_alive(now)  # someone just pressed the AI Service hotkey
+            # A stream that (re)started needs a real reply first (speech or "No text found.").
+            fresh = not self.stream_alive(now)
             self.last_frame = now
             self.refresh()
+            n = self.narrator
             reading = reader.analyze_image(self.font, img)
             sig = (reading.flat(), tuple(reading.options), reading.selected, tuple(reading.other))
             if sig != self.sig:
                 self.sig, self.stable_since = sig, now
             stable = now - self.stable_since
-            if fresh:
-                self.pending = self.pending or now
-                self.narrator.reset()
+            if reading.kind in ("other", "none") and stable >= BOX_GONE:
+                n.box_closed()
 
+            if self.announce:
+                text, self.announce = self.announce, None
+                return self._send_wav(n.say(text, "menu"), img, text)
             ready = {"menu": stable >= STABLE_MENU,
                      "dialogue": reading.more or stable >= STABLE_TEXT,
-                     "other": stable >= STABLE_MENU}.get(reading.kind, False)
-            if self.pending is not None and (ready or now - self.pending >= PRESS_TIMEOUT or reading.kind == "none"):
+                     "other": stable >= STABLE_MENU,
+                     "none": stable >= BOX_GONE}[reading.kind]
+            reply = None
+            if self.pending is not None and (ready or now - self.pending >= PRESS_TIMEOUT):
                 self.pending = None
-                return self._say(reading, sig, img, now, repeat=True, fresh=fresh)
-            if (self.settings["auto_read"] == "on" and ready and sig != self.spoken_sig
-                    and reading.kind in ("menu", "dialogue")):
-                return self._say(reading, sig, img, now, repeat=False, fresh=fresh)
-            if ready and sig != self.spoken_sig:
-                self.narrator.prepare(self.narrator.plan(reading))
-        if not fresh:
-            self.sleep(POLL)  # pace the stream while nothing is said
-        return {"auto": "auto"} if not fresh else {"error": NO_TEXT, "auto": "auto"}
+                self.spoken_sig = sig
+                reply = self._speak(n.plan(reading, repeat=True), reading, img)
+            elif ready and sig != self.spoken_sig:
+                pieces = n.plan(reading)
+                if reading.kind in ("other", "none"):
+                    pieces = [p for p in pieces if p[0] == "cue"]  # just the "menu closed" sound
+                if self.settings["auto_read"] == "on" and not self.muted:
+                    self.spoken_sig = sig
+                    reply = self._speak(pieces, reading, img)
+                else:
+                    if reading.kind in ("other", "none"):
+                        n.remember(reading)  # the menu closed: forget it
+                    n.prepare(n.plan(reading, repeat=True))  # ready for the button
+            if reply:
+                return reply
+        if fresh:
+            return {"error": NO_TEXT, "auto": "auto"}
+        self.sleep(POLL)  # pace the stream while nothing is said
+        return {"auto": "auto"}
 
-    def _say(self, reading, sig, img, now, repeat, fresh):
-        pieces = self.narrator.plan(reading, repeat=repeat)
-        self.spoken_sig = sig
-        if not pieces:
-            return {"error": NO_TEXT, "auto": "auto"} if fresh else {"auto": "auto"}
-        wav = self.narrator.render(pieces)
+    def _speak(self, pieces, reading, img):
+        """Say pieces (if any) and remember the reading. None = nothing to say."""
         self.narrator.remember(reading)
-        self.speaking_until = now + (len(wav) - 44) / (2.0 * RATE)
+        if not pieces:
+            return None
+        return self._send_wav(self.narrator.render(pieces), img, reading.flat())
+
+    def _send_wav(self, wav, img, text):
+        # Measured *after* rendering: synthesis on the handheld can take a second or two.
+        self.speaking_until = self.clock() + (len(wav) - 44) / (2.0 * RATE)
         try:
-            self.capture(img, reading.flat())
+            self.capture(img, text)
         except OSError as e:  # a full or read-only SD card must never stop the speech
             sys.stderr.write("urusai: capture failed: %r\n" % e)
         return {"sound": base64.b64encode(wav).decode("ascii"), "auto": "auto"}
@@ -277,15 +309,20 @@ def main(argv=None):
         starter = Starter(app)
         threading.Thread(target=starter.watch_games, daemon=True, name="urusai-autostart").start()
 
-        def on_button():
+        def say_again():
             if app.press():
+                starter.kick("button")
+
+        def mute():
+            if app.toggle_mute():
                 starter.kick("button")
 
         def current_button():
             settings.reload()
             return settings["button"]
 
-        watcher = ButtonWatcher(current_button, on_button)
+        taps = Taps(say_again, mute)
+        watcher = ButtonWatcher(current_button, taps.press)
         watcher.start()
         threading.Timer(4.0, write_status, (app, watcher, starter, a.port)).start()
     write_status(app, watcher, starter, a.port)

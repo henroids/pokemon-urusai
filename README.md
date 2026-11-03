@@ -1,6 +1,6 @@
 # Pokémon Urusai
 
-An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a chime marking the selected one. **L2** says it again. The game keeps running while it talks.
+An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a chime marking the selected one. **Tap L2** to hear it again, **double-tap** to switch automatic reading off/on. The game keeps running while it talks.
 
 Everything runs on the handheld, with no internet and no PC:
 
@@ -25,8 +25,9 @@ Everything runs on the handheld, with no internet and no PC:
 ## What it reads
 
 - **Dialogue** (the box at the bottom): read once it has finished printing. When the box scrolls one line, **only the new line** is read.
-- **Menus and questions**: the question, then every option in the menu voice, with a **chime ("biiing–booong") after the selected one**. Moving the cursor reads **just the new option**. Big grids (name entry) read only the selected letter.
-- **L2**, any time: the whole screen again, including screens that aren't read automatically (e.g. the Pokédex).
+- **Menus and questions**: an "open" sound, the question, then every option in the menu voice, with a **chime ("biiing–booong") after the selected one**. Moving the cursor reads **just the new option**, with a low "tok" at the first/last one. A "close" sound when the menu goes away. Big grids (name entry) read only the selected letter.
+- **Tap L2**, any time: the whole screen again, once, including screens that aren't read automatically (e.g. the Pokédex). **Double-tap**: 「よみあげ オフ/オン」.
+- All voices are levelled to the same loudness; `menu_position = on` adds 「2ばんめ」 after the selection.
 
 Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're added.
 
@@ -41,7 +42,7 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |
 | `urusai/font.py` | tile → label table |
 | `urusai/tts.py`, `audio.py`, `normalize.py` | Open JTalk, loudness, text clean-up for speech |
-| `urusai/button.py` | gamepad watcher for the "say it again" button |
+| `urusai/button.py` | gamepad watcher + single/double tap detection |
 | `urusai/settings.py` | `urusai_settings.txt` |
 | `font/gen1_jp.json` | the font, built by `tools/build_font.py` from `tests/frames/` |
 | `tests/frames/` | 36 reference frames (160×144) from 青, with expected readings |
