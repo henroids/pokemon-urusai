@@ -6,7 +6,7 @@ The install takes about 10 minutes, once. After that, the reader starts by itsel
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.5.3.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.5.4.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 
@@ -47,8 +47,8 @@ The installer does the following:
 | On screen | What you hear |
 |---|---|
 | A new text box | the box; after it scrolls, **only the new line** |
-| A menu or question opens | a rising "pop" sound, the question (if not read yet), then every option in the **menu voice**, with a **"biiing–booong" right after the selected one** |
-| The cursor moves | just the newly selected option (a low "tok" on the first or last one) |
+| A menu or question opens | the question (if not read yet), a rising "pop" sound, then every option in the **menu voice**, with a sound right after the selected one: **はい "biiing–booong"**, **いいえ a buzzer "eerrrr"**, anything else a short "pip" |
+| The cursor moves | just the newly selected option (はい/いいえ with their sound; a low "tok" on the first or last option of other menus) |
 | The menu closes | a falling "pop" sound |
 | A big grid (name entry) | just the selected letter |
 | **Tap L2** | the whole screen again, once (e.g. the Pokédex page or a full menu) |
@@ -65,7 +65,7 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `auto_read` | `on` | Read new text and menu choices automatically. `off` = only when you press the button. |
 | `autostart` | `on` | Switch the reader on by itself when a game starts |
 | `button` | `L2` | Tap = say it again, double tap = reading off/on: `L1 R1 L2 R2 L3 R3 SELECT START`, or `off` |
-| `sound_cues` | `on` | Sounds when a menu opens or closes and at the first/last option (the selection chime is always on) |
+| `sound_cues` | `on` | Sounds when a menu opens or closes and at the first/last option (the selection sounds are always on) |
 | `menu_position` | `off` | Say the position after the selected option, e.g. 「2ばんめ」 |
 | `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy` (female) or `nitech` (male) |
 | `menu_voice` | `nitech` | Voice for menu options |

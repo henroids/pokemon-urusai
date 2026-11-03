@@ -36,7 +36,7 @@ autostart = {autostart}
 button = {button}
 
 # Sounds when a menu opens or closes, and at the first/last option: on / off
-# (the "biiing-booong" after the selected option is always on)
+# (the sounds after the selected option are always on: はい biiing-booong, いいえ buzzer, others pip)
 sound_cues = {sound_cues}
 
 # Say the position after the selected option, e.g. 「2ばんめ」: on / off

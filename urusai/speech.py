@@ -2,9 +2,10 @@
 
   * Dialogue: when the box scrolls up one line, only the new line is read.
   * Menus: an "open" cue, the question (dialogue voice), then every option
-    in the menu voice with a chime ("biiing-booong") right after the selected
-    one. Moving the cursor says just the new choice (+ a low "tok" on the
-    first/last option). A falling cue when the menu closes.
+    in the menu voice with a sound right after the selected one: はい gets a
+    "biiing-booong", いいえ a buzzer "eerrrr", anything else a short "pip".
+    Moving the cursor says just the new choice (はい/いいえ with their sound,
+    a low "tok" on the first/last option). A falling cue when the menu closes.
   * Speech is synthesised in the background as soon as text appears, so a
     request usually finds it ready (cache keyed by voice + text).
 """
@@ -68,9 +69,28 @@ def blip(freqs, ms=70, level=7000, gap_ms=10):
     return out
 
 
+def buzzer(length=0.8, level=6500):
+    """A game-over horn, "eerrrr": two slightly detuned buzzy tones (odd harmonics)."""
+    n = int(RATE * length)
+    attack, release = RATE * 10 // 1000, RATE * 60 // 1000
+    out = array.array("h")
+    for i in range(n):
+        t = i / RATE
+        env = min(1.0, i / attack, (n - i) / release)
+        v = 0.0
+        for f in (180.0, 186.0):
+            for h, a in ((1, 1.0), (3, 0.45), (5, 0.25), (7, 0.12)):
+                v += a * math.sin(2 * math.pi * f * h * t)
+        out.append(int(level * env * v / 3.6))
+    return out
+
+
 _CUES = {}
+YES, NO = "はい", "いいえ"
 CUE_SOUNDS = {
-    "select": chime,                                    # biiing-booong: the selected option
+    "yes": chime,                                       # biiing-booong: はい selected
+    "no": buzzer,                                       # eerrrr: いいえ selected
+    "select": lambda: blip((1568,), ms=80, level=6000), # pip: the selected option of other menus
     "open": lambda: blip((784, 1175)),                  # rising: a menu opened
     "close": lambda: blip((1175, 784)),                 # falling: the menu closed
     "edge": lambda: blip((392,), ms=60, level=6000),    # low tok: first/last option
@@ -92,6 +112,11 @@ def to_wav(samples):
         w.setframerate(RATE)
         w.writeframes(samples.tobytes())
     return buf.getvalue()
+
+
+def selection_cue(option):
+    """Which sound marks the selected option."""
+    return "yes" if option == YES else "no" if option == NO else "select"
 
 
 def new_lines(lines, spoken):
@@ -149,15 +174,17 @@ class Narrator:
                 pieces.append(("menu", reading.selected_text))
             elif same_menu:
                 pieces += [("menu", reading.selected_text)] + position
-                if self.cues and len(opts) > 2 and reading.selected in (0, len(opts) - 1):
+                if reading.selected_text in (YES, NO):
+                    pieces.append(("cue", selection_cue(reading.selected_text)))
+                elif self.cues and len(opts) > 2 and reading.selected in (0, len(opts) - 1):
                     pieces.append(("cue", "edge"))
             else:
                 if self.cues and not repeat:
-                    pieces.insert(0, ("cue", "open"))
+                    pieces.append(("cue", "open"))  # after the question, before the options
                 for i, opt in enumerate(opts):
                     pieces.append(("menu", opt))
                     if i == reading.selected:
-                        pieces += [("cue", "select")] + position
+                        pieces += [("cue", selection_cue(opt))] + position
         elif reading.kind == "dialogue":
             lines = dialogue if repeat else new_lines(dialogue, self.spoken_dialogue)
             if lines:

@@ -310,6 +310,25 @@ class Streaming(unittest.TestCase):
         self.app.toggle_mute()
         self.assertEqual(self.frame(dialogue_canvas(self.g)), ["announcement"])  # よみあげ オン
 
+    def test_yes_no_sounds(self):
+        def yes_no(row):
+            cv = Canvas(self.g)
+            cv.box(12, 0, 17, 19)
+            cv.text(14, 1, "ニックネームを つけますか？")
+            cv.box(6, 13, 11, 19)
+            cv.text(7, 15, "はい")
+            cv.text(9, 15, "いいえ")
+            cv.put(row, 14, "<cursor>")
+            return cv
+        self.frame(yes_no(7))
+        self.assertEqual(self.frame(yes_no(7), settle=0.3),
+                         [("talk", "ニックネームを つけますか？"), ("cue", "open"),
+                          ("menu", "はい"), ("cue", "yes"), ("menu", "いいえ")])
+        self.frame(yes_no(9))
+        self.assertEqual(self.frame(yes_no(9), settle=0.3), [("menu", "いいえ"), ("cue", "no")])
+        self.frame(yes_no(7))
+        self.assertEqual(self.frame(yes_no(7), settle=0.3), [("menu", "はい"), ("cue", "yes")])
+
     def test_position_setting(self):
         self.app.settings.values["menu_position"] = "on"
         self.app._apply_settings()
@@ -352,7 +371,7 @@ class Narration(unittest.TestCase):
 
     def test_cues_render(self):
         from urusai.speech import cue, to_wav
-        for name in ("select", "open", "close", "edge"):
+        for name in ("yes", "no", "select", "open", "close", "edge"):
             self.assertEqual(to_wav(cue(name))[:4], b"RIFF")
 
     def test_taps(self):
