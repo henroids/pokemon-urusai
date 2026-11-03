@@ -23,16 +23,7 @@ It runs entirely on the handheld. RetroArch's **AI Service** sends the frame to 
 
 ## Install on dArkOS (RGB20 Pro)
 
-1. Unzip the release. Copy the `PokemonUrusai` folder **and** `Install Pokemon Urusai.sh` into `/roms/ports/` on the SD card.
-2. On the handheld, open **Ports**, then run **Install Pokemon Urusai**. The installer:
-   - copies everything to `/opt/urusai`
-   - starts the `urusai` service at boot
-   - sets the RetroArch AI Service to Speech mode at `http://127.0.0.1:4404/`, with pause on
-3. In RetroArch, do this once:
-   - Go to *Settings → Input → Hotkeys → AI Service* and pick a button.
-   - Go to *Main Menu → Configuration File → Save Current Configuration*.
-
-To remove it, run `sudo /opt/urusai/install/darkos/uninstall.sh`.
+See **[INSTALL.md](INSTALL.md)** for step-by-step instructions. In short: copy the release zip's contents to `ports`, run **Install Pokemon Urusai** from Ports, then bind RetroArch's *AI Service* hotkey and save the config.
 
 ## Building the font (once)
 

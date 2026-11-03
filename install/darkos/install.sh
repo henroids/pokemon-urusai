@@ -31,7 +31,7 @@ mkdir -p "$DEST"
 for d in urusai tools bin voice dic font install; do
   [ -d "$SRC/$d" ] && { rm -rf "${DEST:?}/$d"; cp -r "$SRC/$d" "$DEST/"; }
 done
-cp -f "$SRC"/README.md "$SRC"/LICENSES.md "$DEST/" 2>/dev/null
+cp -f "$SRC"/README.md "$SRC"/INSTALL.md "$SRC"/LICENSES.md "$DEST/" 2>/dev/null
 chmod +x "$DEST/bin/open_jtalk-aarch64"
 mkdir -p "$CAPTURE_DIR" && chown "$USER_NAME" "$CAPTURE_DIR" 2>/dev/null
 

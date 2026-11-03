@@ -8,7 +8,7 @@ DIC="${URUSAI_DICT_SRC:-$ROOT/dic}"
 [ -f "$DIC/sys.dic" ] || { echo "need naist-jdic (apt install open-jtalk-mecab-naist-jdic)"; exit 1; }
 OUT="$ROOT/dist"; STAGE="$OUT/stage"; PKG="$STAGE/PokemonUrusai"
 rm -rf "$STAGE"; mkdir -p "$PKG/dic"
-cp -r "$ROOT"/{urusai,tools,bin,voice,install,README.md,LICENSES.md} "$PKG/"
+cp -r "$ROOT"/{urusai,tools,bin,voice,install,README.md,INSTALL.md,LICENSES.md} "$PKG/"
 mkdir -p "$PKG/font"; cp "$ROOT"/font/*.json "$PKG/font/" 2>/dev/null || true
 cp "$DIC"/* "$PKG/dic/"
 find "$PKG" -name __pycache__ -prune -exec rm -rf {} +
