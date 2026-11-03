@@ -57,6 +57,48 @@ class SettingsFile(unittest.TestCase):
         self.assertNotIn("retroarch_port", text)
 
 
+# Game-style lines: phrase-final は/へ are particles (wa/e); は inside words stays "ha".
+PARTICLE_LINES = [
+    "ぼくは オーキド！ みんなからは ポケモン はかせと よばれて おるよ",
+    "では はじめに きみの なまえを おしえて もらおう！",
+    "この せかいには ポケット モンスターと よばれる",
+    "どこへ いくの？ トキワシティへ むかえ！",
+    "わたしは ジムリーダーの タケシ！",
+    "こんにちは！ こんばんは！",
+    "はかせは けんきゅうじょへ いったよ",
+    "これは きみへの プレゼントだ",
+    "かれは はしって いった",          # without spaces Open JTalk hears 枯れ葉 "kareha"
+    "むしポケモンは はやいぞ",
+]
+
+
+class Particles(unittest.TestCase):
+    def test_phrase_final_particles_sound_wa_and_e(self):
+        from urusai import normalize, tts
+        sp = Speaker()
+        fixed_any = False
+        for line in PARTICLE_LINES:
+            with self.subTest(line=line):
+                text, hints = normalize.with_particles(line)
+                self.assertTrue(hints or "は" not in line)
+                _, toks = sp._synth(text, analyse=True)
+                wrong = tts.misread_particles(text, toks, hints)
+                if wrong:  # what Speaker.wav does: spell it わ/え and synthesise again
+                    fixed_any = True
+                    text = "".join({"は": "わ", "へ": "え"}[c] if i in wrong else c for i, c in enumerate(text))
+                    _, toks = sp._synth(text, analyse=True)
+                self.assertEqual(tts.misread_particles(text, toks, hints), [])
+                for surface, _, pron in toks:  # は inside words keeps its "ha"
+                    if surface in ("はかせ", "はやい", "はじめ", "はしっ"):
+                        self.assertTrue(pron.startswith("ハ"), (surface, pron))
+        self.assertTrue(fixed_any, "かれは should have needed the fix")
+
+    def test_laughter_is_left_alone(self):
+        from urusai import normalize
+        self.assertEqual(normalize.with_particles("あはは！ へへへ")[1], [])
+        self.assertEqual(normalize.with_particles("ははは")[1], [])
+
+
 class Loudness(unittest.TestCase):
     def test_voices_are_levelled(self):
         import math

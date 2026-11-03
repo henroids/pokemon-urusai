@@ -27,6 +27,7 @@ Everything runs on the handheld, with no internet and no PC:
 - **Dialogue** (the box at the bottom): read once it has finished printing. When the box scrolls one line, **only the new line** is read.
 - **Menus and questions**: an "open" sound, the question, then every option in the menu voice, with a **chime ("biiing–booong") after the selected one**. Moving the cursor reads **just the new option**, with a low "tok" at the first/last one. A "close" sound when the menu goes away. Big grids (name entry) read only the selected letter.
 - **Tap L2**, any time: the whole screen again, once, including screens that aren't read automatically (e.g. the Pokédex). **Double-tap**: 「よみあげ オフ/オン」.
+- Text is read in one flow (no pauses at the game's word spaces). The spaces are still used to check particles: a は/へ ending a phrase must sound "wa"/"e", and if Open JTalk misreads one (e.g. かれは as 枯れ葉 "kareha") it's corrected and re-spoken.
 - All voices are levelled to the same loudness; `menu_position = on` adds 「2ばんめ」 after the selection.
 
 Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're added.

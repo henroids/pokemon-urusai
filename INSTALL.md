@@ -6,7 +6,7 @@ The install takes about 10 minutes, once. After that, the reader starts by itsel
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.5.2.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.5.3.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 

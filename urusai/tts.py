@@ -5,7 +5,7 @@ import platform
 import subprocess
 import tempfile
 
-from . import audio
+from . import audio, normalize
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOICE_DIR = os.path.join(HERE, "voice")
@@ -59,16 +59,66 @@ class Speaker:
         self.speed = min(2.0, max(0.5, float(speed)))
         self.volume = min(400, max(0, int(volume)))
 
-    def wav(self, text):
+    def wav(self, text, particles=()):
+        """Speak text. particles: indices of は/へ that must sound wa/e; if Open JTalk
+        read one differently, it's spelled わ/え and synthesised again."""
+        raw, tokens = self._synth(text, analyse=bool(particles))
+        wrong = misread_particles(text, tokens, particles) if particles else []
+        if wrong:
+            fixed = list(text)
+            for i in wrong:
+                fixed[i] = {"は": "わ", "へ": "え"}[text[i]]
+            raw, _ = self._synth("".join(fixed), analyse=False)
+        return audio.louder(raw, self.volume, level=True)  # every voice equally loud
+
+    def _synth(self, text, analyse):
         fd, out = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
+        trace = out[:-4] + ".trace"
         try:
             cmd = [self.binary, "-x", self.dic, "-m", self.voice, "-ow", out,
                    "-r", str(self.speed), "-g", str(SYNTH_GAIN_DB)]
+            if analyse:
+                cmd += ["-ot", trace]
             subprocess.run(cmd, input=text.encode("utf-8"), check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
             with open(out, "rb") as f:
                 raw = f.read()
+            tokens = parse_trace(trace) if analyse else []
         finally:
-            os.unlink(out)
-        return audio.louder(raw, self.volume, level=True)  # every voice equally loud
+            for p in (out, trace):
+                if os.path.exists(p):
+                    os.unlink(p)
+        return raw, tokens
+
+
+def parse_trace(path):
+    """[(surface, part of speech, pronunciation)] from Open JTalk's -ot output."""
+    tokens, inside = [], False
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("[Text analysis result]"):
+                inside = True
+            elif inside:
+                if not line.strip():
+                    break
+                fields = line.rstrip("\n").split(",")
+                if len(fields) > 9:
+                    tokens.append((fields[0], fields[1], fields[9]))
+    return tokens
+
+
+def misread_particles(text, tokens, particles):
+    """Indices in particles that Open JTalk didn't pronounce as wa/e."""
+    if "".join(t[0] for t in tokens) != text:  # its normalisation changed the text: can't map
+        return []
+    wrong, pos = [], 0
+    for surface, pos_tag, pron in tokens:
+        for i in particles:
+            if pos <= i < pos + len(surface):
+                want = normalize.PARTICLES[text[i]]
+                ok = pron == want if len(surface) == 1 else pron.endswith(want) and i == pos + len(surface) - 1
+                if not ok and pos_tag not in ("フィラー",):
+                    wrong.append(i)
+        pos += len(surface)
+    return wrong

@@ -178,7 +178,7 @@ class Narrator:
 
     def _key(self, piece):
         sp = self._speaker(piece[0])
-        return (sp.voice, sp.speed, sp.volume, normalize.for_speech(piece[1]))
+        return (sp.voice, sp.speed, sp.volume, piece[1])
 
     def _synth(self, piece):
         key = self._key(piece)
@@ -186,7 +186,8 @@ class Narrator:
             if key in self.cache:
                 self.cache.move_to_end(key)
                 return self.cache[key]
-        samples = trim(_wav_samples(self._speaker(piece[0]).wav(key[3])))
+        text, particles = normalize.with_particles(piece[1])
+        samples = trim(_wav_samples(self._speaker(piece[0]).wav(text, particles)))
         with self.lock:
             self.cache[key] = samples
             while len(self.cache) > self.cache_size:
