@@ -6,7 +6,7 @@ The install takes about 10 minutes, once. After that, the reader starts by itsel
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.6.0.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.6.1.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 
@@ -51,7 +51,7 @@ The installer does the following:
 | The cursor moves | just the newly selected option (はい/いいえ with their sound; a low "tok" on the first or last option of other menus) |
 | The menu closes | a falling "pop" sound |
 | A big grid (name entry) | just the selected letter |
-| You press A, B, Start or the D-pad while it's talking (in a menu, or once a box has finished printing) | it **stops** and reads what's new instead. Pressing A to speed up printing doesn't cut off the line being read. |
+| You press any game button (A, B, Start, D-pad) while it's talking | it **stops at once**, whatever it was saying, and reads what's new. Anything cut off that's still on screen is read again; while you're mashing A through printing text it stays quiet, then reads the box once it settles. |
 | **Tap L2** | the whole screen again, once (e.g. the Pokédex page or a full menu) |
 | **Double-tap L2** | 「よみあげ オフ」 / 「よみあげ オン」: automatic reading off/on. Tapping still works while it's off. |
 
@@ -70,7 +70,7 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `menu_position` | `off` | Say the position after the selected option, e.g. 「2ばんめ」 |
 | `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy`, `mei_bashful` (female) or `nitech` (male). Add `+N`/`-N` to shift it up or down N semitones, e.g. `mei+3`. |
 | `menu_voice` | `tohoku-4` | Voice for menu options (Tohoku, 4 semitones lower) |
-| `interrupt` | `on` | Stop talking when you press a game button in a menu or after a box has printed |
+| `interrupt` | `on` | Stop talking whenever you press a game button |
 | `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
 | `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |

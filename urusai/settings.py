@@ -48,7 +48,7 @@ menu_position = {menu_position}
 voice = {voice}
 menu_voice = {menu_voice}
 
-# Stop talking when you press A, B, Start or the D-pad, and read what's new: on / off
+# Stop talking whenever you press a game button (A, B, Start, D-pad), and read what's new: on / off
 interrupt = {interrupt}
 
 # Voice volume in percent. 100 = natural; 150-250 = louder over the music.

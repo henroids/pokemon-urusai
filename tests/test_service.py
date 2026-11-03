@@ -351,9 +351,33 @@ class Streaming(unittest.TestCase):
         self.assertEqual(self.frame(battle_menu(self.g, 16, 9)), "cut")
         self.assertEqual(self.frame(battle_menu(self.g, 16, 9), settle=0.3), [("menu", "どうぐ")])
 
-    def test_mashing_a_while_text_prints_does_not_cut_the_line(self):
-        self.frame(two_line_box(self.g, "やせいの ピカチュウが", "と"))  # line 1 is being read
+    def test_any_button_cuts_dialogue_and_unfinished_lines_are_read_again(self):
+        g = self.g
+        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "と")), [("talk", "やせいの ピカチュウが")])
+        self.clock.t = self.app.speaking_until - 1.0             # line 1 still playing…
+        self.assertTrue(self.app.want_interrupt())               # …A pressed (to speed up printing)
+        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだし")), "cut")
+        # the box finishes: both lines, since line 1 was cut off
+        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True)),
+                         [("talk", "やせいの ピカチュウが とびだしてきた！")])
+
+    def test_any_button_cuts_announcements_and_finished_boxes(self):
+        self.frame(dialogue_canvas(self.g))
         self.clock.t = self.app.speaking_until - 1.0
+        self.assertTrue(self.app.want_interrupt())               # A on a finished box
+        self.assertEqual(self.frame(battle_menu(self.g, 14, 9)), "cut")
+        self.app.toggle_mute()
+        self.frame(battle_menu(self.g, 14, 9))                     # 「よみあげ オフ」…
+        self.clock.t = self.app.speaking_until - 0.5
+        self.assertTrue(self.app.want_interrupt())               # …cut too
+
+    def test_interrupt_needs_the_virtual_keyboard_and_the_setting(self):
+        self.frame(dialogue_canvas(self.g))
+        self.clock.t = self.app.speaking_until - 1.0
+        self.app.settings.values["interrupt"] = "off"
+        self.assertFalse(self.app.want_interrupt())
+        self.app.settings.values["interrupt"] = "on"
+        self.app.can_interrupt = False
         self.assertFalse(self.app.want_interrupt())
 
     def test_stray_second_loop_is_ended(self):

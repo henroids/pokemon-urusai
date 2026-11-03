@@ -149,6 +149,7 @@ class Narrator:
     def reset(self):
         self.spoken_lines = []  # dialogue lines already read (for scroll detection)
         self.spoken_menu = None  # options of the menu last read in full
+        self._before = None      # memory before the speech now playing (undone if it's cut off)
 
     def box_closed(self):
         """The message box went away: the next box is new even if its text repeats."""
@@ -209,12 +210,22 @@ class Narrator:
             chunks.append(chunk)
         return chunks
 
-    def remember(self, reading, settled=True):
-        """Call after a reading was handled, so the next plan knows what was said."""
+    def remember(self, reading, settled=True, chunks=None):
+        """Call when a reading is handled, so the next plan knows what was said.
+        If what's being said gets cut off, forget_unfinished() undoes this."""
+        self._before = (list(self.spoken_lines), self.spoken_menu) if chunks else None
         lines = reading.dialogue if settled or reading.kind != "dialogue" else reading.dialogue[:-1]
         if lines:
             self.spoken_lines = list(lines)
         self.spoken_menu = frozenset(reading.options) if reading.kind == "menu" else None
+
+    def forget_unfinished(self):
+        """Speech was cut off: its dialogue lines count as not read, so they're read
+        again if they're still on screen. (A menu stays known, so moving the cursor
+        still just says the new option.)"""
+        if self._before is not None:
+            self.spoken_lines = self._before[0]
+            self._before = None
 
     # ---- making the sound --------------------------------------------------
     def _speaker(self, kind):

@@ -15,7 +15,7 @@ The stream starts with RetroArch's AI Service hotkey, which we press
 through a virtual keyboard when a game starts or the button is pressed.
 
 Stopping speech: RetroArch only asks again once a clip has finished. When
-a game button is pressed mid-speech we press the hotkey twice: the first
+any game button is pressed mid-speech we press the hotkey twice: the first
 press ends auto mode, the second sends a request at once, and our reply
 (the new speech, or a moment of silence) replaces the clip that's playing.
 The extra loop this leaves behind is ended by replying to its duplicate
@@ -78,8 +78,7 @@ class App:
         self.cutting = False        # a hotkey-made request is coming to stop the speech
         self.last_cut = -1e9
         self.can_interrupt = False  # set when the virtual keyboard works
-        self.screen_kind = "none"   # what's on screen, for deciding about interrupts
-        self.screen_settled = False
+        self.hold = False           # after a cut: wait until the screen settles before reading
         self.queue = collections.deque()  # clips still to say for the current screen…
         self.queue_sig = None             # …and which screen that was
         self.sig = None             # what's on screen now…
@@ -129,18 +128,19 @@ class App:
 
     def want_interrupt(self):
         """A game button was pressed. True = stop the speech now (press the hotkey twice).
-        Only in menus, or once a box has finished printing: there a button changes
-        the screen. Mashing A to speed up printing doesn't cut the line being read."""
+        Like a screen reader: any key stops speech, whatever is being said. Lines cut
+        off before they were finished are read again once the screen settles."""
         with self.lock:
             now = self.clock()
             if self.cutting and now - self.last_cut > CUT_TIMEOUT:
                 self.cutting = False  # the hotkey never arrived
             if (not self.can_interrupt or self.settings["interrupt"] != "on" or self.cutting
-                    or now > self.speaking_until - INTERRUPT_MIN_LEFT or now - self.last_cut < 0.5
-                    or not (self.screen_kind == "menu" or self.screen_settled)):
+                    or now > self.speaking_until - INTERRUPT_MIN_LEFT or now - self.last_cut < 0.3):
                 return False
             self.cutting, self.last_cut = True, now
             self.queue.clear()
+            self.narrator.forget_unfinished()  # what was cut off counts as not said
+            self.hold = True                    # e.g. mashing A: stay quiet until the text settles
             return True
 
     # ---- one frame from RetroArch ------------------------------------------
@@ -180,7 +180,6 @@ class App:
         if reading.kind in ("other", "none") and stable >= BOX_GONE:
             n.box_closed()
         settled = reading.more or stable >= STABLE_TEXT
-        self.screen_kind, self.screen_settled = reading.kind, settled and reading.kind == "dialogue"
 
         # 1. the rest of what we were saying, if the screen hasn't moved on
         if self.queue:
@@ -202,7 +201,11 @@ class App:
             return self._start(n.plan(reading, repeat=True), reading, img, sig, settled=True)
         # 4. automatic reading
         auto = self.settings["auto_read"] == "on" and not self.muted
+        if self.hold and (reading.kind != "dialogue" or settled):
+            self.hold = False
         if reading.kind == "dialogue":
+            if self.hold:
+                return None
             chunks = n.plan(reading, settled=settled)
             if chunks and auto:
                 self.spoken_sig = sig
@@ -225,7 +228,7 @@ class App:
 
     def _start(self, chunks, reading, img, sig, settled):
         """Say the first chunk now, queue the rest. None = nothing to say."""
-        self.narrator.remember(reading, settled)
+        self.narrator.remember(reading, settled, chunks)
         if not chunks:
             return None
         self.queue = collections.deque(chunks[1:])
