@@ -8,10 +8,9 @@ screen moved on (cursor moved, menu closed) the rest is dropped:
     still printing, so only line 2 is left to make). After a scroll, only
     the new line.
   * Menus: the question (dialogue voice), an "open" sound, then each option
-    as its own chunk in the menu voice, with a sound after the selected one:
-    はい "biiing-booong", いいえ a buzzer, anything else a "pip". A cursor
-    move says just the new option (はい/いいえ with their sound, a low "tok"
-    on the first/last option). A falling sound when the menu closes.
+    as its own chunk in the menu voice, with a "pip" after the selected one
+    (none for はい/いいえ). A cursor move says just the new option (a low
+    "tok" on the first/last option). A falling sound when the menu closes.
 
 Speed (Narrator.render): every clip is cached in memory and on disk, made
 in the background as soon as text appears, and common menu words are made
@@ -41,8 +40,8 @@ COMMON_MENU = [
 
 
 def selection_cue(option):
-    """Which sound marks the selected option."""
-    return "yes" if option == YES else "no" if option == NO else "select"
+    """Which sound marks the selected option (はい/いいえ get none)."""
+    return None if option in (YES, NO) else "select"
 
 
 def new_lines(lines, spoken):
@@ -209,9 +208,7 @@ class Narrator:
             return [[("menu", reading.selected_text)]]
         if not repeat and frozenset(opts) == self.spoken_menu:  # the cursor moved
             chunk = [("menu", reading.selected_text)] + position
-            if reading.selected_text in (YES, NO):
-                chunk.append(("cue", selection_cue(reading.selected_text)))
-            elif self.cues and len(opts) > 2 and sel in (0, len(opts) - 1):
+            if self.cues and len(opts) > 2 and sel in (0, len(opts) - 1):
                 chunk.append(("cue", "edge"))
             return [chunk]
         chunks = []
@@ -219,7 +216,8 @@ class Narrator:
             chunk = [("gap",)] if i else ([("cue", "open")] if self.cues and not repeat else [])
             chunk.append(("menu", opt))
             if i == sel:
-                chunk += [("cue", selection_cue(opt))] + position
+                cue = selection_cue(opt)
+                chunk += ([("cue", cue)] if cue else []) + position
             chunks.append(chunk)
         return chunks
 

@@ -1,6 +1,6 @@
 # Pokémon Urusai
 
-An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a chime marking the selected one. **Tap L2** to hear it again, **double-tap** to switch automatic reading off/on. The game keeps running while it talks.
+An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a pip marking the selected one. **Tap L2** to hear it again, **double-tap** to switch automatic reading off/on. The game keeps running while it talks.
 
 Everything runs on the handheld, with no internet and no PC:
 
@@ -26,7 +26,7 @@ Everything runs on the handheld, with no internet and no PC:
 
 - **Dialogue** (the box at the bottom): the box in one go, lines back to back, as soon as it has printed (line 1's speech is made while line 2 prints). When the box scrolls one line, **only the new line** is read.
 - **Numbers** are read with Japanese counters (1こ いっこ, 3びき さんびき, 8ほん はっぽん) and game formats put into words (HP 15/20 → 20のうち15, No.007 → 7ばん, ×3 → 3こ, 12:34 → 12じかん34ぷん). Open JTalk only applies counter sound changes to kanji, so kana counters after a number are converted.
-- **Menus and questions**: the question, an "open" sound, then every option in the menu voice, with a sound after the selected one: **はい "biiing–booong"**, **いいえ a buzzer "eerrrr"**, other options a short "pip". Moving the cursor reads **just the new option**, with a low "tok" at the first/last one. A "close" sound when the menu goes away. Big grids (name entry) read only the selected letter.
+- **Menus and questions**: the question, an "open" sound, then every option in the menu voice, with a short "pip" after the selected one (none for はい/いいえ). Moving the cursor reads **just the new option**, with a low "tok" at the first/last one. A "close" sound when the menu goes away. Big grids (name entry) read only the selected letter.
 - **Stops when you move on**: menus are read one option at a time, so moving the cursor or closing the menu drops the rest. Any game button pressed mid-speech cuts off whatever is being said (dialogue, menu or announcement), like a screen reader; after a press, the same screen stays quiet and only what's new is read: the reader presses RetroArch's AI hotkey twice, and the new reply replaces the clip that's playing.
 - **Instant**: speech is cached in memory and on disk (`/opt/urusai/cache`), made in the background as text appears, and common menu words are made at start-up.
 - **Tap L2**, any time: the whole screen again, once, including screens that aren't read automatically (e.g. the Pokédex). **Double-tap**: 「よみあげ オフ/オン」.
@@ -41,7 +41,7 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 |---|---|
 | `urusai/server.py` | AI Service endpoint: the frame stream, when to speak, autostart, captures |
 | `urusai/speech.py` | what to say, as short clips (new lines only, menus option by option) + memory/disk speech cache |
-| `urusai/sounds.py` | sound cues (はい bell, いいえ buzzer, pip, open/close, tok) and audio helpers |
+| `urusai/sounds.py` | sound cues (pip, open/close, tok) and audio helpers |
 | `urusai/vkbd.py` | virtual keyboard (uinput) that presses the AI Service hotkey |
 | `urusai/reader.py` | tiles → `Reading` (dialogue lines, menu options + selection, other text) |
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |

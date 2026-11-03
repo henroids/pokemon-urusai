@@ -365,13 +365,13 @@ class Streaming(unittest.TestCase):
         self.assertIsNone(self.frame(battle_menu(self.g, 16, 9)))
         self.assertEqual(self.frame(battle_menu(self.g, 16, 9), settle=0.3), [("menu", "どうぐ")])
 
-    def test_yes_no_sounds(self):
+    def test_yes_no_have_no_sound(self):
         played = self.menu_session(yes_no(self.g, 7))
         self.assertEqual(played, [[("talk", "ニックネームを つけますか？")],
-                                  [("cue", "open"), ("menu", "はい"), ("cue", "yes")],
+                                  [("cue", "open"), ("menu", "はい")],
                                   [("gap",), ("menu", "いいえ")]])
         self.frame(yes_no(self.g, 9))
-        self.assertEqual(self.frame(yes_no(self.g, 9), settle=0.3), [("menu", "いいえ"), ("cue", "no")])
+        self.assertEqual(self.frame(yes_no(self.g, 9), settle=0.3), [("menu", "いいえ")])
 
     # -- the button --
     def test_say_it_again_repeats_once(self):
@@ -513,7 +513,7 @@ class Narration(unittest.TestCase):
 
     def test_cues_render(self):
         from urusai.sounds import cue, to_wav
-        for name in ("yes", "no", "select", "open", "close", "edge"):
+        for name in ("select", "open", "close", "edge"):
             self.assertEqual(to_wav(cue(name))[:4], b"RIFF")
 
     def test_taps(self):

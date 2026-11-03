@@ -47,7 +47,7 @@ The installer does the following:
 | On screen | What you hear |
 |---|---|
 | A new text box | the box **in one go, lines back to back**, as soon as it has printed (line 1's speech is made while line 2 prints); after a scroll, **only the new line** |
-| A menu or question opens | the question (if not read yet), a rising "pop" sound, then every option in the **menu voice**, with a sound right after the selected one: **はい "biiing–booong"**, **いいえ a buzzer "eerrrr"**, anything else a short "pip" |
+| A menu or question opens | the question (if not read yet), a rising "pop" sound, then every option in the **menu voice**, with a short "pip" right after the selected one (none for はい/いいえ) |
 | The cursor moves | just the newly selected option (はい/いいえ with their sound; a low "tok" on the first or last option of other menus) |
 | The menu closes | a falling "pop" sound |
 | A big grid (name entry) | just the selected letter |
