@@ -1,6 +1,6 @@
 # Pokémon Urusai
 
-An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a beep marking the selected one. **L2** says it again. The game keeps running while it talks.
+An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a chime marking the selected one. **L2** says it again. The game keeps running while it talks.
 
 Everything runs on the handheld, with no internet and no PC:
 
@@ -25,7 +25,7 @@ Everything runs on the handheld, with no internet and no PC:
 ## What it reads
 
 - **Dialogue** (the box at the bottom): read once it has finished printing. When the box scrolls one line, **only the new line** is read.
-- **Menus and questions**: the question, then every option in the menu voice, with a **beep before the selected one**. Moving the cursor reads **just the new option**. Big grids (name entry) read only the selected letter.
+- **Menus and questions**: the question, then every option in the menu voice, with a **chime ("biiing–booong") after the selected one**. Moving the cursor reads **just the new option**. Big grids (name entry) read only the selected letter.
 - **L2**, any time: the whole screen again, including screens that aren't read automatically (e.g. the Pokédex).
 
 Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're added.
@@ -35,7 +35,7 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 | Path | What |
 |---|---|
 | `urusai/server.py` | AI Service endpoint: the frame stream, when to speak, autostart, captures |
-| `urusai/speech.py` | what to say (new lines only, menus with beep) + background speech cache |
+| `urusai/speech.py` | what to say (new lines only, menus with a chime after the selection) + background speech cache |
 | `urusai/vkbd.py` | virtual keyboard (uinput) that presses the AI Service hotkey |
 | `urusai/reader.py` | tiles → `Reading` (dialogue lines, menu options + selection, other text) |
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |

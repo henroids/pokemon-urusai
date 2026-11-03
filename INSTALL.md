@@ -6,7 +6,7 @@ The install takes about 10 minutes, once. After that, the reader starts by itsel
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.4.0.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.4.1.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 
@@ -47,7 +47,7 @@ The installer does the following:
 | On screen | What you hear |
 |---|---|
 | A new text box | the box; after it scrolls, **only the new line** |
-| A menu or question opens | the question (if not read yet), then every option in the **menu voice**, with a **beep before the one that's selected** |
+| A menu or question opens | the question (if not read yet), then every option in the **menu voice**, with a **chime ("biiing–booong") right after the one that's selected** |
 | The cursor moves | just the newly selected option |
 | A big grid (name entry) | just the selected letter |
 | **L2** (any time) | the whole screen again, e.g. the Pokédex page or a full menu |

@@ -190,12 +190,12 @@ class Streaming(unittest.TestCase):
         plan = narrator.plan(reader_of(self.app, scrolled_canvas(self.g)))
         self.assertEqual(plan, [("talk", "ゆけ！ ゼニガメ！")])
         self.assertTrue(self.said(self.frame(scrolled_canvas(self.g))))
-        # 4. battle menu opens: waits until it sits still, then reads all options, beep before ▶
+        # 4. battle menu opens: waits until it sits still, then reads all options, chime after ▶
         self.assertFalse(self.said(self.frame(battle_menu(self.g, 14, 9))))
         self.clock.t += 0.3
         r = reader_of(app, battle_menu(self.g, 14, 9))
         # reading order is row by row (this synthetic menu has ポケモン on the top row)
-        self.assertEqual(narrator.plan(r), [("beep",), ("menu", "たたかう"), ("menu", "ポケモン"),
+        self.assertEqual(narrator.plan(r), [("menu", "たたかう"), ("beep",), ("menu", "ポケモン"),
                                             ("menu", "どうぐ"), ("menu", "にげる")])
         self.assertTrue(self.said(self.frame(battle_menu(self.g, 14, 9))))
         # 5. cursor moves to にげる -> just the new option

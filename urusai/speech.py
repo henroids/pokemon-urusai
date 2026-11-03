@@ -2,7 +2,7 @@
 
   * Dialogue: when the box scrolls up one line, only the new line is read.
   * Menus: the question (dialogue voice), then every option in the menu
-    voice with a beep before the selected one. Moving the cursor in the
+    voice with a chime ("biiing-booong") right after the selected one. Moving the cursor in the
     same menu says just the new choice.
   * Speech is synthesised in the background as soon as text appears, so a
     request usually finds it ready (cache keyed by voice + text).
@@ -40,14 +40,30 @@ def silence(ms):
     return array.array("h", bytes(2 * (RATE * ms // 1000)))
 
 
-def beep(freq=1320, ms=110, level=9000):
-    n = RATE * ms // 1000
-    fade = RATE * 8 // 1000
-    out = array.array("h")
-    for i in range(n):
-        env = min(1.0, i / fade, (n - i) / fade)
-        out.append(int(level * env * math.sin(2 * math.pi * freq * i / RATE)))
-    return out
+def chime(notes=((1318.5, 0.0), (1046.5, 0.30)), length=0.85, level=8000):
+    """A soft two-note bell, "biiing-booong" (E6 then C6), marking the selection.
+    Each note has a quick attack, a long decay and a quieter octave overtone."""
+    n = int(RATE * length)
+    out = [0.0] * n
+    for freq, start in notes:
+        s0 = int(RATE * start)
+        for i in range(n - s0):
+            t = i / RATE
+            env = min(1.0, t / 0.004) * math.exp(-t * 5.0)
+            out[s0 + i] += env * (math.sin(2 * math.pi * freq * t) + 0.25 * math.sin(4 * math.pi * freq * t))
+    peak = max(abs(x) for x in out) or 1.0
+    return array.array("h", (int(level * x / peak) for x in out))
+
+
+_CHIME = None
+
+
+def beep():
+    """The selection marker (cached: it's the same every time)."""
+    global _CHIME
+    if _CHIME is None:
+        _CHIME = chime()
+    return _CHIME
 
 
 def to_wav(samples):
@@ -104,9 +120,9 @@ class Narrator:
                 pieces.append(("menu", reading.selected_text))
             else:
                 for i, opt in enumerate(opts):
+                    pieces.append(("menu", opt))
                     if i == reading.selected:
                         pieces.append(("beep",))
-                    pieces.append(("menu", opt))
         elif reading.kind == "dialogue":
             lines = dialogue if repeat else new_lines(dialogue, self.spoken_dialogue)
             pieces.append(("talk", " ".join(lines)))
@@ -146,13 +162,11 @@ class Narrator:
         out = array.array("h")
         for i, piece in enumerate(pieces):
             if piece[0] == "beep":
-                out += beep() + silence(40)
+                out += silence(60) + beep()  # the chime's own tail is the pause after it
                 continue
             out += self._synth(piece)
             if i + 1 < len(pieces) and pieces[i + 1][0] != "beep":
                 out += silence(180)
-            elif i + 1 < len(pieces):
-                out += silence(120)
         return to_wav(out)
 
     def prepare(self, pieces):
