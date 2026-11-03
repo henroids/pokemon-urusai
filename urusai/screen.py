@@ -11,14 +11,45 @@ def to_gb_frame(img):
         return img
     if (img.width, img.height) == (256, 224):  # Super Game Boy border
         return pngdec.downscale(img, 1, 48, 40)
-    # Integer-scaled capture (e.g. an AYN Thor screenshot with Integer Scale on):
-    # assume the game is centred at the largest integer scale that fits.
-    k = min(img.width // GB_W, img.height // GB_H)
-    if k >= 1:
-        x0 = (img.width - GB_W * k) // 2
-        y0 = (img.height - GB_H * k) // 2
-        return pngdec.downscale(img, k, x0, y0)
-    raise ValueError("frame too small: %dx%d" % (img.width, img.height))
+    # A phone/handheld screenshot: the game is centred, either at the largest
+    # integer scale or stretched to fit (e.g. 7.5x on a 1080p AYN Thor).
+    # Try both and keep the one whose source pixels look like solid blocks.
+    if img.width < GB_W or img.height < GB_H:
+        raise ValueError("frame too small: %dx%d" % (img.width, img.height))
+    cands = {min(img.width / GB_W, img.height / GB_H),
+             float(min(img.width // GB_W, img.height // GB_H))}
+    best = min(cands, key=lambda s: _block_error(img, s))
+    return _sample(img, best)
+
+
+def _origin(img, s):
+    return (img.width - GB_W * s) / 2.0, (img.height - GB_H * s) / 2.0
+
+
+def _sample(img, s, dx=0.5, dy=0.5):
+    x0, y0 = _origin(img, s)
+    rows = []
+    for ty in range(GB_H):
+        src = img.rows[min(img.height - 1, int(y0 + (ty + dy) * s))]
+        out = bytearray(GB_W * 3)
+        for tx in range(GB_W):
+            i = min(img.width - 1, int(x0 + (tx + dx) * s)) * 3
+            out[tx * 3:tx * 3 + 3] = src[i:i + 3]
+        rows.append(bytes(out))
+    return pngdec.Image(GB_W, GB_H, rows)
+
+
+def _block_error(img, s):
+    """How often samples near a source pixel's edges disagree with its centre."""
+    if s < 2:
+        return 0
+    m = 1.3 / s  # just inside the left/top and right/bottom edges
+    c = _sample(img, s)
+    err = 0
+    for dx, dy in ((m, m), (1 - m, 1 - m)):
+        e = _sample(img, s, dx, dy)
+        err += sum(a != b for ra, rb in zip(c.rows, e.rows) for a, b in zip(ra, rb))
+    return err
 
 
 def ink_mask(img):

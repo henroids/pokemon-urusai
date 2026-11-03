@@ -69,6 +69,8 @@ def cmd_label(a, font):
         r, c = rc(pairs[i])
         for ch in pairs[i + 1]:
             if ch == " ":
+                if grid[r][c] != 0 and not a.force:
+                    sys.exit("tile %d:%d should be blank (a space in the text) but isn't" % (r, c))
                 c += 1
                 continue
             d = unicodedata.normalize("NFD", ch)
@@ -112,6 +114,25 @@ def cmd_read(a, font):
         print("wrote", a.wav)
 
 
+def cmd_unknown(a, font):
+    """List tiles in text areas that the font doesn't know yet, across many captures."""
+    import glob
+    found = {}
+    for path in sorted(glob.glob(os.path.join(a.dir, "*.png"))):
+        grid = load_grid(path)
+        for r, row in enumerate(grid):
+            for c, t in enumerate(row):
+                if t == 0 or font.match(t) is not None:
+                    continue
+                # only tiles sitting next to known text are likely to be text
+                near = [row[x] for x in (c - 1, c + 1) if 0 <= x < len(row)]
+                if any(font.match(n) not in (None, " ") for n in near):
+                    found.setdefault(t, []).append("%s@%d:%d" % (os.path.basename(path), r, c))
+    for t, where in sorted(found.items(), key=lambda kv: -len(kv[1])):
+        print("%s  x%d  e.g. %s\n%s\n" % (screen.tile_hex(t), len(where), where[0], screen.tile_art(t)))
+    print("%d unknown text-like tiles" % len(found))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--font", default=DEFAULT_FONT)
@@ -119,11 +140,13 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("grid"); g.add_argument("shot"); g.add_argument("--show", action="store_true")
     l = sub.add_parser("label"); l.add_argument("shot"); l.add_argument("items", nargs="+")
+    l.add_argument("--force", action="store_true", help="allow spaces over non-blank tiles")
     t = sub.add_parser("tile"); t.add_argument("shot"); t.add_argument("pos"); t.add_argument("label")
+    u = sub.add_parser("unknown"); u.add_argument("dir")
     r = sub.add_parser("read"); r.add_argument("shot"); r.add_argument("--wav")
     a = p.parse_args()
     font = Font.load(a.font)
-    {"grid": cmd_grid, "label": cmd_label, "tile": cmd_tile, "read": cmd_read}[a.cmd](a, font)
+    {"unknown": cmd_unknown, "grid": cmd_grid, "label": cmd_label, "tile": cmd_tile, "read": cmd_read}[a.cmd](a, font)
 
 
 if __name__ == "__main__":

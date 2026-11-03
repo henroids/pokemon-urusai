@@ -54,6 +54,8 @@ class Font:
         best, best_d, tie = None, MAX_DIST + 1, False
         for k, lab in self.table.items():
             d = _popcount(k ^ tile)
+            if d > _popcount(k) // 8:  # small glyphs (・ ー) must match exactly
+                continue
             if d < best_d:
                 best, best_d, tie = lab, d, False
             elif d == best_d and lab != best:
