@@ -6,9 +6,7 @@ import json
 import os
 import sys
 import tempfile
-import threading
 import unittest
-import urllib.request
 import wave
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -102,7 +100,7 @@ class Particles(unittest.TestCase):
 class Loudness(unittest.TestCase):
     def test_voices_are_levelled(self):
         import math
-        from urusai.speech import _wav_samples, trim
+        from urusai.sounds import wav_samples as _wav_samples, trim
 
         def rms(voice):
             a = trim(_wav_samples(Speaker(voice=voice, volume=100).wav("たたかう どうぐ ポケモン にげる")))
@@ -185,15 +183,6 @@ class FakeClock:
         self.t += dt
 
 
-def scrolled_canvas(g):
-    cv = Canvas(g)
-    cv.box(12, 0, 17, 19)
-    cv.text(14, 1, "とびだしてきた！")
-    cv.text(16, 1, "ゆけ！ ゼニガメ！")
-    cv.put(16, 18, "<more>")
-    return cv
-
-
 def battle_menu(g, cursor_row, cursor_col):
     cv = Canvas(g)
     cv.box(12, 0, 17, 19)
@@ -206,11 +195,25 @@ def battle_menu(g, cursor_row, cursor_col):
     return cv
 
 
-def half_scrolled_canvas(g):
-    """Mid-scroll: the old second line has moved up, the new one isn't typed yet."""
+def two_line_box(g, line1, line2=None, more=False):
     cv = Canvas(g)
     cv.box(12, 0, 17, 19)
-    cv.text(14, 1, "とびだしてきた！")
+    cv.text(14, 1, line1)
+    if line2:
+        cv.text(16, 1, line2)
+    if more:
+        cv.put(16, 18, "<more>")
+    return cv
+
+
+def yes_no(g, row):
+    cv = Canvas(g)
+    cv.box(12, 0, 17, 19)
+    cv.text(14, 1, "ニックネームを つけますか？")
+    cv.box(6, 13, 11, 19)
+    cv.text(7, 15, "はい")
+    cv.text(9, 15, "いいえ")
+    cv.put(row, 14, "<cursor>")
     return cv
 
 
@@ -230,71 +233,98 @@ class Streaming(unittest.TestCase):
         self.cap = os.path.join(d, "cap")
         self.clock = FakeClock()
         self.app = server.App(fontp, settings.Settings(cfg), capture_dir=self.cap,
-                              clock=self.clock, sleep=self.clock.sleep)
-        render = self.app.narrator.render
+                              cache_dir=os.path.join(d, "cache"), clock=self.clock, sleep=self.clock.sleep)
+        self.app.can_interrupt = True
+        n = self.app.narrator
+        self.rendered = []
+        render = n.render
 
-        def slow_render(pieces):
+        def slow_render(chunk):
+            self.rendered.append(chunk)
             self.clock.t += self.SYNTH_SECONDS
-            return render(pieces)
-        self.app.narrator.render = slow_render
-        self.app.narrator.say = lambda text, kind="talk": slow_render([(kind, text)])
-        self.played = []
+            return render(chunk)
+        n.render = slow_render
 
     def frame(self, canvas, settle=0.0):
-        """One RetroArch request; returns the pieces spoken (None if silent)."""
+        """One RetroArch request. Returns the chunk played (None if silent).
+        Like RetroArch, the next request comes after the clip has played."""
         self.clock.t += settle
-        planned = []
-        plan = self.app.narrator.plan
-
-        def spy(reading, repeat=False):
-            pieces = plan(reading, repeat)
-            planned.append(pieces)
-            return pieces
-        self.app.narrator.plan = spy
+        before = len(self.rendered)
         body = json.dumps({"image": base64.b64encode(pngdec.encode(canvas.image())).decode()}).encode()
-        try:
-            resp = self.app.handle(body, {"output": ["sound,wav"]})
-        finally:
-            self.app.narrator.plan = plan
+        resp = self.app.handle(body, {"output": ["sound,wav"]})
         self.assertEqual(resp.get("auto"), "auto")  # the stream must never stop
         if "sound" in resp:
-            # RetroArch plays it (from when we replied), then asks again shortly after it ends
-            self.clock.t += (len(base64.b64decode(resp["sound"])) - 44) / 96000 + 0.3
-            spoken = planned[-1] if planned else ["announcement"]
-            self.played.append(spoken)
-            return spoken
+            self.clock.t += (len(base64.b64decode(resp["sound"])) - 44) / 96000 + 0.1
+            return self.rendered[-1] if len(self.rendered) > before else "cut"
         return None
 
-    def test_dialogue_is_read_once_and_scrolls_read_only_the_new_line(self):
-        self.assertEqual(self.frame(dialogue_canvas(self.g)),
-                         [("talk", "やせいの ピカチュウが とびだしてきた！")])
-        for _ in range(5):  # no loop after the (slow) speech
-            self.assertIsNone(self.frame(dialogue_canvas(self.g), settle=0.2))
-        self.assertIsNone(self.frame(half_scrolled_canvas(self.g), settle=1.0))  # old line alone: nothing new
-        self.assertEqual(self.frame(scrolled_canvas(self.g)), [("talk", "ゆけ！ ゼニガメ！")])
-        self.assertIsNone(self.frame(scrolled_canvas(self.g), settle=0.2))
+    def menu_session(self, canvas, settle=0.3):
+        """Frames until the menu has been read; returns all chunks played."""
+        played = []
+        self.frame(canvas)
+        for _ in range(12):
+            c = self.frame(canvas, settle=settle if not played else 0)
+            if c is None and played:
+                break
+            if c is not None:
+                played.append(c)
+        return played
 
-    def test_menu_open_move_close(self):
-        self.frame(dialogue_canvas(self.g))
-        self.assertIsNone(self.frame(battle_menu(self.g, 14, 9)))  # settling
-        self.assertEqual(self.frame(battle_menu(self.g, 14, 9), settle=0.3),
-                         [("cue", "open"), ("menu", "たたかう"), ("cue", "select"), ("menu", "ポケモン"),
-                          ("menu", "どうぐ"), ("menu", "にげる")])
-        self.assertIsNone(self.frame(battle_menu(self.g, 14, 9), settle=0.3))
-        # cursor to どうぐ (third of four): just the option
+    # -- dialogue --
+    def test_lines_are_read_as_soon_as_printed_and_never_twice(self):
+        g = self.g
+        self.assertIsNone(self.frame(two_line_box(g, "やせいの")))                      # line 1 typing
+        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "と")),         # line 2 started
+                         [("talk", "やせいの ピカチュウが")])
+        self.assertIsNone(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだし")))
+        self.assertEqual(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True)),
+                         [("talk", "とびだしてきた！")])
+        for _ in range(4):  # no repeats, even with slow synthesis
+            self.assertIsNone(self.frame(two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True), 0.2))
+        # A pressed: scroll. Mid-scroll (old line alone) says nothing; the new line is read.
+        self.assertIsNone(self.frame(two_line_box(g, "とびだしてきた！"), 0.2))
+        self.assertIsNone(self.frame(two_line_box(g, "とびだしてきた！", "ゆけ"), 0.1))
+        self.assertEqual(self.frame(two_line_box(g, "とびだしてきた！", "ゆけ！ ゼニガメ！", more=True)),
+                         [("talk", "ゆけ！ ゼニガメ！")])
+
+    def test_settled_box_is_one_clip(self):
+        self.assertEqual(self.frame(dialogue_canvas(self.g)), [("talk", "やせいの ピカチュウが とびだしてきた！")])
+
+    # -- menus --
+    def test_menu_is_read_option_by_option_then_cursor_moves(self):
+        played = self.menu_session(battle_menu(self.g, 14, 9))
+        self.assertEqual(played, [
+            [("cue", "open"), ("menu", "たたかう"), ("cue", "select")],
+            [("gap",), ("menu", "ポケモン")],
+            [("gap",), ("menu", "どうぐ")],
+            [("gap",), ("menu", "にげる")]])
         self.frame(battle_menu(self.g, 16, 9))
         self.assertEqual(self.frame(battle_menu(self.g, 16, 9), settle=0.3), [("menu", "どうぐ")])
-        # cursor to にげる (last): option + low "tok"
         self.frame(battle_menu(self.g, 16, 14))
         self.assertEqual(self.frame(battle_menu(self.g, 16, 14), settle=0.3), [("menu", "にげる"), ("cue", "edge")])
-        # menu closes onto a plain screen: the falling "closed" sound
         self.frame(Canvas(self.g))
         self.assertEqual(self.frame(Canvas(self.g), settle=0.5), [("cue", "close")])
-        self.assertIsNone(self.frame(Canvas(self.g), settle=0.5))
 
+    def test_moving_on_drops_the_rest_of_the_menu(self):
+        self.frame(battle_menu(self.g, 14, 9))
+        first = self.frame(battle_menu(self.g, 14, 9), settle=0.3)
+        self.assertEqual(first[1], ("menu", "たたかう"))
+        # the cursor moved while たたかう was read: ポケモン/どうぐ/にげる are dropped
+        self.assertIsNone(self.frame(battle_menu(self.g, 16, 9)))
+        self.assertEqual(self.frame(battle_menu(self.g, 16, 9), settle=0.3), [("menu", "どうぐ")])
+
+    def test_yes_no_sounds(self):
+        played = self.menu_session(yes_no(self.g, 7))
+        self.assertEqual(played, [[("talk", "ニックネームを つけますか？")],
+                                  [("cue", "open"), ("menu", "はい"), ("cue", "yes")],
+                                  [("gap",), ("menu", "いいえ")]])
+        self.frame(yes_no(self.g, 9))
+        self.assertEqual(self.frame(yes_no(self.g, 9), settle=0.3), [("menu", "いいえ"), ("cue", "no")])
+
+    # -- the button --
     def test_say_it_again_repeats_once(self):
         self.frame(dialogue_canvas(self.g))
-        self.assertFalse(self.app.press())  # stream alive: no hotkey needed
+        self.assertFalse(self.app.press())
         self.assertEqual(self.frame(dialogue_canvas(self.g), settle=0.2),
                          [("talk", "やせいの ピカチュウが とびだしてきた！")])
         for _ in range(5):
@@ -303,38 +333,42 @@ class Streaming(unittest.TestCase):
     def test_double_tap_mutes_and_unmutes(self):
         self.frame(Canvas(self.g))
         self.assertFalse(self.app.toggle_mute())
-        self.assertEqual(self.frame(Canvas(self.g)), ["announcement"])  # よみあげ オフ
+        self.assertEqual(self.frame(Canvas(self.g)), [("menu", "よみあげ オフ")])
         self.assertIsNone(self.frame(dialogue_canvas(self.g), settle=1.0))  # muted
         self.app.press()  # the button still works while muted
         self.assertIsNotNone(self.frame(dialogue_canvas(self.g)))
         self.app.toggle_mute()
-        self.assertEqual(self.frame(dialogue_canvas(self.g)), ["announcement"])  # よみあげ オン
+        self.assertEqual(self.frame(dialogue_canvas(self.g)), [("menu", "よみあげ オン")])
 
-    def test_yes_no_sounds(self):
-        def yes_no(row):
-            cv = Canvas(self.g)
-            cv.box(12, 0, 17, 19)
-            cv.text(14, 1, "ニックネームを つけますか？")
-            cv.box(6, 13, 11, 19)
-            cv.text(7, 15, "はい")
-            cv.text(9, 15, "いいえ")
-            cv.put(row, 14, "<cursor>")
-            return cv
-        self.frame(yes_no(7))
-        self.assertEqual(self.frame(yes_no(7), settle=0.3),
-                         [("talk", "ニックネームを つけますか？"), ("cue", "open"),
-                          ("menu", "はい"), ("cue", "yes"), ("menu", "いいえ")])
-        self.frame(yes_no(9))
-        self.assertEqual(self.frame(yes_no(9), settle=0.3), [("menu", "いいえ"), ("cue", "no")])
-        self.frame(yes_no(7))
-        self.assertEqual(self.frame(yes_no(7), settle=0.3), [("menu", "はい"), ("cue", "yes")])
+    # -- stopping speech --
+    def test_game_button_stops_speech_in_menus(self):
+        self.frame(battle_menu(self.g, 14, 9))
+        self.frame(battle_menu(self.g, 14, 9), settle=0.3)       # たたかう…
+        self.clock.t = self.app.speaking_until - 1.0              # …still playing
+        self.assertTrue(self.app.want_interrupt())                # D-pad down
+        self.assertFalse(self.app.want_interrupt())               # not twice
+        # the hotkey's request: cursor still settling -> silence replaces the clip
+        self.assertEqual(self.frame(battle_menu(self.g, 16, 9)), "cut")
+        self.assertEqual(self.frame(battle_menu(self.g, 16, 9), settle=0.3), [("menu", "どうぐ")])
 
+    def test_mashing_a_while_text_prints_does_not_cut_the_line(self):
+        self.frame(two_line_box(self.g, "やせいの ピカチュウが", "と"))  # line 1 is being read
+        self.clock.t = self.app.speaking_until - 1.0
+        self.assertFalse(self.app.want_interrupt())
+
+    def test_stray_second_loop_is_ended(self):
+        body = json.dumps({"image": base64.b64encode(pngdec.encode(Canvas(self.g).image())).decode()}).encode()
+        self.app.handle(body, {})
+        self.clock.t += 1
+        self.app.last_arrival = self.clock.t
+        self.assertEqual(self.app.handle(body, {}), {"error": "No text found."})  # no "auto"
+
+    # -- misc --
     def test_position_setting(self):
         self.app.settings.values["menu_position"] = "on"
         self.app._apply_settings()
-        self.frame(battle_menu(self.g, 14, 9))
-        spoken = self.frame(battle_menu(self.g, 14, 9), settle=0.3)
-        self.assertIn(("menu", "1ばんめ"), spoken)
+        played = self.menu_session(battle_menu(self.g, 14, 9))
+        self.assertIn(("menu", "1ばんめ"), played[0])
 
     def test_fresh_stream_on_empty_screen_is_valid_for_retroarch(self):
         body = json.dumps({"image": base64.b64encode(pngdec.encode(Canvas(self.g).image())).decode()}).encode()
@@ -342,7 +376,7 @@ class Streaming(unittest.TestCase):
         self.assertEqual(self.app.handle(body, {}), {"auto": "auto"})
 
     def test_stopped_stream_needs_the_hotkey(self):
-        self.assertTrue(self.app.press())  # nothing streaming yet
+        self.assertTrue(self.app.press())
         self.frame(Canvas(self.g))
         self.assertFalse(self.app.press())
         self.clock.t += 10
@@ -356,9 +390,27 @@ class Streaming(unittest.TestCase):
         self.assertIsNotNone(self.frame(dialogue_canvas(self.g)))
 
 
-def reader_of(app, canvas):
-    from urusai import reader
-    return reader.analyze_image(app.font, canvas.image())
+class Cache(unittest.TestCase):
+    def test_disk_cache_survives_a_restart(self):
+        from urusai.speech import Narrator
+        d = tempfile.mkdtemp()
+        n = Narrator(Speaker(), Speaker(), cache_dir=d)
+        wav = n.render([("menu", "たたかう")])
+        self.assertEqual(len([f for f in os.listdir(d) if f.endswith(".pcm")]), 1)
+        n2 = Narrator(Speaker(), Speaker(), cache_dir=d)   # "after a reboot"
+        n2.speaker.wav = n2.menu_speaker.wav = None         # synthesis would fail if needed
+        self.assertTrue(n2.ready([("menu", "たたかう")]))
+        self.assertEqual(n2.render([("menu", "たたかう")]), wav)
+
+    def test_prune_keeps_the_size_limit(self):
+        from urusai.speech import ClipCache
+        import array as arr
+        d = tempfile.mkdtemp()
+        c = ClipCache(d, disk_bytes=3000)
+        for i in range(5):
+            c.put(("v", 0, 1, 100, "t%d" % i), arr.array("h", bytes(1000)))
+        c.prune()
+        self.assertLessEqual(sum(os.path.getsize(os.path.join(d, f)) for f in os.listdir(d)), 3000)
 
 
 class Narration(unittest.TestCase):
@@ -370,7 +422,7 @@ class Narration(unittest.TestCase):
         self.assertEqual(new_lines(["x", "y"], ["a", "b"]), ["x", "y"])
 
     def test_cues_render(self):
-        from urusai.speech import cue, to_wav
+        from urusai.sounds import cue, to_wav
         for name in ("yes", "no", "select", "open", "close", "edge"):
             self.assertEqual(to_wav(cue(name))[:4], b"RIFF")
 

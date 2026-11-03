@@ -57,7 +57,6 @@ class Canvas:
 
     def image(self, scale=1, pad=(0, 0), noise=0):
         w, h = 160 * scale + 2 * pad[0], 144 * scale + 2 * pad[1]
-        rnd = random.Random(7)
         rows = []
         for y in range(h):
             row = bytearray()

@@ -18,14 +18,16 @@ Everything runs on the handheld, with no internet and no PC:
 | RetroArch AI Service (Speech mode, no pause) | works on the RGB20 Pro (dArkOS) |
 | Auto reading via RetroArch auto mode, L2 = say again, autostart via uinput | new in 0.4.0, needs hardware testing |
 | Gen 1 font (`font/gen1_jp.json`, 129 tiles) | all kana, marks, menus; some digits and symbols still missing |
-| Offline voices: tohoku (dialogue), nitech (menus), mei | static aarch64 `open_jtalk`, no apt needed |
+| Offline voices: tohoku (dialogue), tohoku −4 semitones (menus), mei, mei_bashful, nitech | static aarch64 `open_jtalk`, no apt needed |
 | Settings file on the SD card | auto read, autostart, button, voices, volume, speed, captures |
 | Knulli (RG35XXSP) | todo |
 
 ## What it reads
 
-- **Dialogue** (the box at the bottom): read once it has finished printing. When the box scrolls one line, **only the new line** is read.
+- **Dialogue** (the box at the bottom): each line as soon as it has printed. When the box scrolls one line, **only the new line** is read.
 - **Menus and questions**: the question, an "open" sound, then every option in the menu voice, with a sound after the selected one: **はい "biiing–booong"**, **いいえ a buzzer "eerrrr"**, other options a short "pip". Moving the cursor reads **just the new option**, with a low "tok" at the first/last one. A "close" sound when the menu goes away. Big grids (name entry) read only the selected letter.
+- **Stops when you move on**: menus are read one option at a time, so moving the cursor or closing the menu drops the rest. A game button pressed mid-speech (in a menu, or after a box has printed) cuts the speech off at once: the reader presses RetroArch's AI hotkey twice, and the new reply replaces the clip that's playing.
+- **Instant**: speech is cached in memory and on disk (`/opt/urusai/cache`), made in the background as text appears, and common menu words are made at start-up.
 - **Tap L2**, any time: the whole screen again, once, including screens that aren't read automatically (e.g. the Pokédex). **Double-tap**: 「よみあげ オフ/オン」.
 - Text is read in one flow (no pauses at the game's word spaces). The spaces are still used to check particles: a は/へ ending a phrase must sound "wa"/"e", and if Open JTalk misreads one (e.g. かれは as 枯れ葉 "kareha") it's corrected and re-spoken.
 - All voices are levelled to the same loudness; `menu_position = on` adds 「2ばんめ」 after the selection.
@@ -37,7 +39,8 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 | Path | What |
 |---|---|
 | `urusai/server.py` | AI Service endpoint: the frame stream, when to speak, autostart, captures |
-| `urusai/speech.py` | what to say (new lines only, menus with selection sounds) + background speech cache |
+| `urusai/speech.py` | what to say, as short clips (new lines only, menus option by option) + memory/disk speech cache |
+| `urusai/sounds.py` | sound cues (はい bell, いいえ buzzer, pip, open/close, tok) and audio helpers |
 | `urusai/vkbd.py` | virtual keyboard (uinput) that presses the AI Service hotkey |
 | `urusai/reader.py` | tiles → `Reading` (dialogue lines, menu options + selection, other text) |
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |

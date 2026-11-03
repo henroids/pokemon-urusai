@@ -4,3 +4,4 @@ dic/
 dist/
 captures/
 *.wav
+cache/

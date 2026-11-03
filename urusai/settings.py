@@ -12,9 +12,10 @@ DEFAULTS = {
     "autostart": "on",       # switch the reader on by itself when a game starts
     "button": "L2",          # tap = say it again, double tap = reading on/off: L1 R1 L2 R2 L3 R3 SELECT START, or off
     "sound_cues": "on",      # sounds when a menu opens/closes and at the first/last option
+    "interrupt": "on",       # stop talking when a game button is pressed
     "menu_position": "off",  # say 「2ばんめ」 after the selected option
     "voice": "tohoku",       # dialogue voice, a file in voice/: tohoku, tohoku_happy, mei, mei_happy, nitech
-    "menu_voice": "nitech",  # voice for menu options
+    "menu_voice": "tohoku-4",  # voice for menu options (a voice name, optionally +/- semitones)
     "volume": 200,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
     "speed": 0.95,           # 1.0 = normal speaking speed
     "option_pause": 300,     # milliseconds of silence between menu options / choices
@@ -42,9 +43,13 @@ sound_cues = {sound_cues}
 # Say the position after the selected option, e.g. 「2ばんめ」: on / off
 menu_position = {menu_position}
 
-# Voices: tohoku (female), tohoku_happy, mei (female), mei_happy, nitech (male)
+# Voices: tohoku, tohoku_happy, mei, mei_happy, mei_bashful (female), nitech (male).
+# Add +N or -N to make one higher or lower in semitones, e.g. mei+3 or tohoku-4.
 voice = {voice}
 menu_voice = {menu_voice}
+
+# Stop talking when you press A, B, Start or the D-pad, and read what's new: on / off
+interrupt = {interrupt}
 
 # Voice volume in percent. 100 = natural; 150-250 = louder over the music.
 volume = {volume}
@@ -110,9 +115,16 @@ def write_template(path, overrides=None):
         f.write(TEMPLATE.format(**values))
 
 
+# Old defaults that were never changed by hand are moved to the new default.
+MIGRATIONS = {"menu_voice": {"nitech": "tohoku-4"}}
+
+
 def upgrade(path):
     """Rewrite the file with the current comments and options, keeping the user's values."""
     current = Settings(path).values if os.path.exists(path) else {}
+    for key, moves in MIGRATIONS.items():
+        if current.get(key) in moves:
+            current[key] = moves[current[key]]
     write_template(path, current)
 
 

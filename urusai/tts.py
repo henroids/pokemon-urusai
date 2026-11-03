@@ -2,6 +2,7 @@
 import glob
 import os
 import platform
+import re
 import subprocess
 import tempfile
 
@@ -31,6 +32,14 @@ def find_dict():
                    "/var/lib/mecab/dic/open-jtalk/naist-jdic"])
 
 
+def parse_voice(spec):
+    """'mei+3' -> ('mei', 3.0): a voice name plus a pitch shift in semitones."""
+    m = re.match(r"^\s*([A-Za-z0-9_\-]+?)\s*(?:([+-]\s*\d+(?:\.\d+)?))?\s*$", str(spec))
+    if not m:
+        return str(spec).strip(), 0.0
+    return m.group(1), float(m.group(2).replace(" ", "")) if m.group(2) else 0.0
+
+
 def voices():
     """Names of the bundled voices, e.g. ['mei', 'mei_happy', 'nitech', 'tohoku', …]."""
     return sorted(os.path.basename(p)[:-9] for p in glob.glob(os.path.join(VOICE_DIR, "*.htsvoice")))
@@ -55,7 +64,10 @@ class Speaker:
             raise RuntimeError("missing: " + ", ".join(missing))
 
     def configure(self, voice, speed, volume):
-        self.voice = find_voice(voice)
+        """voice may carry a pitch shift in semitones, e.g. 'mei+3' or 'tohoku-4'."""
+        name, pitch = parse_voice(voice)
+        self.voice = find_voice(name)
+        self.pitch = max(-12.0, min(12.0, pitch))
         self.speed = min(2.0, max(0.5, float(speed)))
         self.volume = min(400, max(0, int(volume)))
 
@@ -77,7 +89,7 @@ class Speaker:
         trace = out[:-4] + ".trace"
         try:
             cmd = [self.binary, "-x", self.dic, "-m", self.voice, "-ow", out,
-                   "-r", str(self.speed), "-g", str(SYNTH_GAIN_DB)]
+                   "-r", str(self.speed), "-g", str(SYNTH_GAIN_DB), "-fm", str(self.pitch)]
             if analyse:
                 cmd += ["-ot", trace]
             subprocess.run(cmd, input=text.encode("utf-8"), check=True,

@@ -6,7 +6,7 @@ The install takes about 10 minutes, once. After that, the reader starts by itsel
 
 ## What you need
 
-- The release zip, e.g. `PokemonUrusai-0.5.4.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
+- The release zip, e.g. `PokemonUrusai-0.6.0.zip`. The zip on the GitHub page isn't enough, because it doesn't include the 103 MB dictionary.
 - The RGB20 Pro's games SD card and a card reader. Or use any other way you normally copy ROMs over.
 - Your Pokémon game (Game Boy) running in **RetroArch**. On dArkOS, Game Boy games use RetroArch by default, so your `gb` folder is fine.
 
@@ -46,11 +46,12 @@ The installer does the following:
 
 | On screen | What you hear |
 |---|---|
-| A new text box | the box; after it scrolls, **only the new line** |
+| A new text box | each line **as soon as it has printed** (line 1 while line 2 is still typing); after a scroll, **only the new line** |
 | A menu or question opens | the question (if not read yet), a rising "pop" sound, then every option in the **menu voice**, with a sound right after the selected one: **はい "biiing–booong"**, **いいえ a buzzer "eerrrr"**, anything else a short "pip" |
 | The cursor moves | just the newly selected option (はい/いいえ with their sound; a low "tok" on the first or last option of other menus) |
 | The menu closes | a falling "pop" sound |
 | A big grid (name entry) | just the selected letter |
+| You press A, B, Start or the D-pad while it's talking (in a menu, or once a box has finished printing) | it **stops** and reads what's new instead. Pressing A to speed up printing doesn't cut off the line being read. |
 | **Tap L2** | the whole screen again, once (e.g. the Pokédex page or a full menu) |
 | **Double-tap L2** | 「よみあげ オフ」 / 「よみあげ オン」: automatic reading off/on. Tapping still works while it's off. |
 
@@ -67,12 +68,15 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `button` | `L2` | Tap = say it again, double tap = reading off/on: `L1 R1 L2 R2 L3 R3 SELECT START`, or `off` |
 | `sound_cues` | `on` | Sounds when a menu opens or closes and at the first/last option (the selection sounds are always on) |
 | `menu_position` | `off` | Say the position after the selected option, e.g. 「2ばんめ」 |
-| `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy` (female) or `nitech` (male) |
-| `menu_voice` | `nitech` | Voice for menu options |
+| `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy`, `mei_bashful` (female) or `nitech` (male). Add `+N`/`-N` to shift it up or down N semitones, e.g. `mei+3`. |
+| `menu_voice` | `tohoku-4` | Voice for menu options (Tohoku, 4 semitones lower) |
+| `interrupt` | `on` | Stop talking when you press a game button in a menu or after a box has printed |
 | `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
 | `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |
+
+**Speed:** speech is kept in a cache in `/opt/urusai/cache` (up to 150 MB; the oldest is removed first), and common menu words are made when the handheld starts. Most things play at once, even after a restart.
 
 **About captures:** each time something is read, the screen and the text are saved. Only the newest `captures_keep` are kept and older ones are deleted automatically, so the folder can't fill up: 50 captures is about 100 KB. They're only useful for fixing misreads. Set it to `0` if you don't need them.
 

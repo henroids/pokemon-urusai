@@ -13,6 +13,9 @@ import threading
 import time
 
 EV_KEY = 0x01
+EV_ABS = 0x03
+ABS_HATS = (0x10, 0x11)          # D-pad on pads that report it as a hat
+NOT_GAME_INPUT = {0x13A, 0x13C}   # Select (RetroArch hotkey enable), Menu/Function
 EVENT = struct.Struct("llHHi")  # struct input_event (native long = time fields)
 
 BUTTONS = {
@@ -58,12 +61,14 @@ def devices_with(code, root="/sys/class/input"):
 
 
 class ButtonWatcher(threading.Thread):
-    """Calls on_press() whenever the configured button goes down."""
+    """Calls on_press() whenever the configured button goes down, and
+    on_game_input() for any other game button (A, B, Start, D-pad…)."""
 
-    def __init__(self, get_button, on_press, log=sys.stderr):
+    def __init__(self, get_button, on_press, on_game_input=None, log=sys.stderr):
         super().__init__(daemon=True, name="urusai-button")
         self.get_button = get_button  # callable -> current button name (settings can change)
         self.on_press = on_press
+        self.on_game_input = on_game_input or (lambda: None)
         self.log = log
         self.status = "starting"
 
@@ -104,6 +109,9 @@ class ButtonWatcher(threading.Thread):
                             if now - last >= DEBOUNCE:
                                 last = now
                                 self.on_press()
+                        elif (etype == EV_KEY and value == 1 and ecode not in NOT_GAME_INPUT) or \
+                                (etype == EV_ABS and ecode in ABS_HATS and value != 0):
+                            self.on_game_input()
         finally:
             for fd in fds:
                 os.close(fd)

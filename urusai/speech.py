@@ -1,117 +1,39 @@
-"""Decide what to say for a screen, and say it quickly.
+"""Decide what to say for a screen, and have it ready as fast as possible.
 
-  * Dialogue: when the box scrolls up one line, only the new line is read.
-  * Menus: an "open" cue, the question (dialogue voice), then every option
-    in the menu voice with a sound right after the selected one: はい gets a
-    "biiing-booong", いいえ a buzzer "eerrrr", anything else a short "pip".
-    Moving the cursor says just the new choice (はい/いいえ with their sound,
-    a low "tok" on the first/last option). A falling cue when the menu closes.
-  * Speech is synthesised in the background as soon as text appears, so a
-    request usually finds it ready (cache keyed by voice + text).
+What is said (Narrator.plan) comes as *chunks*, short clips played one
+after another. Between chunks RetroArch sends a fresh frame, so if the
+screen moved on (cursor moved, menu closed) the rest is dropped:
+  * Dialogue: a line is read as soon as it's printed (line 1 while line 2
+    is still typing). After a scroll, only the new line.
+  * Menus: the question (dialogue voice), an "open" sound, then each option
+    as its own chunk in the menu voice, with a sound after the selected one:
+    はい "biiing-booong", いいえ a buzzer, anything else a "pip". A cursor
+    move says just the new option (はい/いいえ with their sound, a low "tok"
+    on the first/last option). A falling sound when the menu closes.
+
+Speed (Narrator.render): every clip is cached in memory and on disk, made
+in the background as soon as text appears, and common menu words are made
+at start-up, so most speech plays at once.
 """
 import array
-import io
-import math
+import hashlib
+import os
 import threading
-import wave
 from collections import OrderedDict
 
 from . import normalize
+from .sounds import cue, silence, to_wav, trim, wav_samples
 
-RATE = 48000
-MAX_OPTIONS = 12  # bigger "menus" (the name grid) just say the selection
-
-
-def _wav_samples(wav_bytes):
-    with wave.open(io.BytesIO(wav_bytes)) as w:
-        return array.array("h", w.readframes(w.getnframes()))
-
-
-def trim(samples, threshold=500, lead_ms=50, tail_ms=80):
-    """Cut Open JTalk's ~0.4 s lead-in and ~0.6 s tail of silence."""
-    start = next((i for i, x in enumerate(samples) if abs(x) > threshold), None)
-    if start is None:
-        return array.array("h")
-    end = len(samples) - next(i for i, x in enumerate(reversed(samples)) if abs(x) > threshold)
-    lo = max(0, start - RATE * lead_ms // 1000)
-    hi = min(len(samples), end + RATE * tail_ms // 1000)
-    return samples[lo:hi]
-
-
-def silence(ms):
-    return array.array("h", bytes(2 * (RATE * ms // 1000)))
-
-
-def chime(notes=((1318.5, 0.0), (1046.5, 0.30)), length=0.85, level=8000):
-    """A soft two-note bell, "biiing-booong" (E6 then C6), marking the selection.
-    Each note has a quick attack, a long decay and a quieter octave overtone."""
-    n = int(RATE * length)
-    out = [0.0] * n
-    for freq, start in notes:
-        s0 = int(RATE * start)
-        for i in range(n - s0):
-            t = i / RATE
-            env = min(1.0, t / 0.004) * math.exp(-t * 5.0)
-            out[s0 + i] += env * (math.sin(2 * math.pi * freq * t) + 0.25 * math.sin(4 * math.pi * freq * t))
-    peak = max(abs(x) for x in out) or 1.0
-    return array.array("h", (int(level * x / peak) for x in out))
-
-
-def blip(freqs, ms=70, level=7000, gap_ms=10):
-    """Short tones in a row: a quick, quiet UI sound."""
-    out = array.array("h")
-    n, fade = RATE * ms // 1000, RATE * 6 // 1000
-    for f in freqs:
-        for i in range(n):
-            env = min(1.0, i / fade, (n - i) / fade)
-            out.append(int(level * env * math.sin(2 * math.pi * f * i / RATE)))
-        out += silence(gap_ms)
-    return out
-
-
-def buzzer(length=0.8, level=6500):
-    """A game-over horn, "eerrrr": two slightly detuned buzzy tones (odd harmonics)."""
-    n = int(RATE * length)
-    attack, release = RATE * 10 // 1000, RATE * 60 // 1000
-    out = array.array("h")
-    for i in range(n):
-        t = i / RATE
-        env = min(1.0, i / attack, (n - i) / release)
-        v = 0.0
-        for f in (180.0, 186.0):
-            for h, a in ((1, 1.0), (3, 0.45), (5, 0.25), (7, 0.12)):
-                v += a * math.sin(2 * math.pi * f * h * t)
-        out.append(int(level * env * v / 3.6))
-    return out
-
-
-_CUES = {}
+MAX_OPTIONS = 12   # bigger "menus" (the name grid) just say the selection
+CACHE_VERSION = 3  # bump when synthesis or trimming changes
 YES, NO = "はい", "いいえ"
-CUE_SOUNDS = {
-    "yes": chime,                                       # biiing-booong: はい selected
-    "no": buzzer,                                       # eerrrr: いいえ selected
-    "select": lambda: blip((1568,), ms=80, level=6000), # pip: the selected option of other menus
-    "open": lambda: blip((784, 1175)),                  # rising: a menu opened
-    "close": lambda: blip((1175, 784)),                 # falling: the menu closed
-    "edge": lambda: blip((392,), ms=60, level=6000),    # low tok: first/last option
-}
 
-
-def cue(name):
-    """A sound cue (cached: they never change)."""
-    if name not in _CUES:
-        _CUES[name] = CUE_SOUNDS[name]()
-    return _CUES[name]
-
-
-def to_wav(samples):
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(RATE)
-        w.writeframes(samples.tobytes())
-    return buf.getvalue()
+# Said a lot in Gen 1: made at start-up so they're instant from the first press.
+COMMON_MENU = [
+    "はい", "いいえ", "たたかう", "どうぐ", "ポケモン", "にげる", "ずかん", "レポート", "せってい", "とじる",
+    "つかう", "すてる", "つよさをみる", "ならびかえ", "キャンセル", "やめる", "かう", "うる", "あずける",
+    "ひきだす", "さいしょからはじめる", "つづきからはじめる", "せっていを かえる", "じぶんできめる",
+]
 
 
 def selection_cue(option):
@@ -121,130 +43,231 @@ def selection_cue(option):
 
 def new_lines(lines, spoken):
     """Lines not read yet. When the box scrolls, its first lines are the last
-    ones we read: drop them. Nothing new (e.g. mid-scroll, the old line alone)
-    gives []. The "say it again" button doesn't use this."""
+    ones we read: drop them. Nothing new (e.g. mid-scroll) gives []."""
     for k in range(min(len(lines), len(spoken)), 0, -1):
         if lines[:k] == spoken[-k:]:
             return lines[k:]
     return lines
 
 
-class Narrator:
-    """Plans utterances and renders them with two Speakers (dialogue, menu)."""
+class ClipCache:
+    """Speech clips by key: in memory (LRU) and as raw files on disk."""
 
-    def __init__(self, speaker, menu_speaker=None, cache_size=64):
-        self.position = False  # say 「2ばんめ」 after the selected option
-        self.cues = True       # open/close/edge sounds (the selection chime is always on)
-        self.pause_ms = 300    # silence between menu options / choices (text itself flows on)
+    def __init__(self, directory=None, memory_items=128, disk_bytes=150 * 1024 * 1024):
+        self.dir = directory
+        self.mem = OrderedDict()
+        self.memory_items = memory_items
+        self.disk_bytes = disk_bytes
+        self.lock = threading.Lock()
+        self.writes = 0
+        if self.dir:
+            os.makedirs(self.dir, exist_ok=True)
+            self.prune()
+
+    @staticmethod
+    def name(key):
+        return hashlib.sha1(repr((CACHE_VERSION,) + key).encode("utf-8")).hexdigest() + ".pcm"
+
+    def get(self, key):
+        with self.lock:
+            if key in self.mem:
+                self.mem.move_to_end(key)
+                return self.mem[key]
+        if self.dir:
+            path = os.path.join(self.dir, self.name(key))
+            try:
+                with open(path, "rb") as f:
+                    samples = array.array("h", f.read())
+                os.utime(path)  # recently used: keep it when pruning
+                self._remember(key, samples)
+                return samples
+            except OSError:
+                pass
+        return None
+
+    def put(self, key, samples):
+        self._remember(key, samples)
+        if self.dir:
+            path = os.path.join(self.dir, self.name(key))
+            try:
+                with open(path + ".tmp", "wb") as f:
+                    f.write(samples.tobytes())
+                os.replace(path + ".tmp", path)
+                self.writes += 1
+                if self.writes % 200 == 0:
+                    self.prune()
+            except OSError:
+                pass  # a full disk only costs speed
+
+    def _remember(self, key, samples):
+        with self.lock:
+            self.mem[key] = samples
+            self.mem.move_to_end(key)
+            while len(self.mem) > self.memory_items:
+                self.mem.popitem(last=False)
+
+    def has(self, key):
+        with self.lock:
+            if key in self.mem:
+                return True
+        return bool(self.dir) and os.path.exists(os.path.join(self.dir, self.name(key)))
+
+    def prune(self):
+        """Keep the disk cache under its size limit, oldest-used files first."""
+        try:
+            files = [os.path.join(self.dir, f) for f in os.listdir(self.dir) if f.endswith(".pcm")]
+            stats = sorted(((os.path.getmtime(p), os.path.getsize(p), p) for p in files))
+        except OSError:
+            return
+        total = sum(s for _, s, _ in stats)
+        for _, size, path in stats:
+            if total <= self.disk_bytes:
+                break
+            try:
+                os.unlink(path)
+                total -= size
+            except OSError:
+                pass
+
+
+class Narrator:
+    """Plans what to say and renders it with two Speakers (dialogue, menu)."""
+
+    def __init__(self, speaker, menu_speaker=None, cache_dir=None):
         self.speaker = speaker
         self.menu_speaker = menu_speaker or speaker
-        self.cache = OrderedDict()
-        self.cache_size = cache_size
+        self.position = False  # say 「2ばんめ」 after the selected option
+        self.cues = True       # open/close/edge sounds (selection sounds are always on)
+        self.pause_ms = 300    # pause between menu options (text itself flows on)
+        self.cache = ClipCache(cache_dir)
         self.lock = threading.Lock()
-        self.wanted = []  # pieces to prepare in the background (newest first)
+        self.wanted = []       # pieces to make in the background, most urgent first
         self.wake = threading.Event()
         threading.Thread(target=self._worker, daemon=True, name="urusai-tts").start()
         self.reset()
 
     def reset(self):
-        self.spoken_dialogue = []   # dialogue lines we last read
-        self.spoken_menu = None     # options of the menu we last read in full
+        self.spoken_lines = []  # dialogue lines already read (for scroll detection)
+        self.spoken_menu = None  # options of the menu last read in full
 
     def box_closed(self):
         """The message box went away: the next box is new even if its text repeats."""
-        self.spoken_dialogue = []
+        self.spoken_lines = []
 
-    # ---- planning -------------------------------------------------------
-    def plan(self, reading, repeat=False):
-        """Pieces to say for this reading: ('talk'|'menu', text) or ('cue', name).
-        repeat=True reads everything again (the "say it again" button)."""
-        pieces = []
+    # ---- what to say ------------------------------------------------------
+    def plan(self, reading, repeat=False, settled=True):
+        """Chunks (lists of pieces) to say for this reading.
+        A piece is ('talk'|'menu', text), ('cue', name) or ('gap',) (the option pause).
+        repeat: read everything again (the button). settled: the text has
+        finished printing; otherwise only lines followed by another are read."""
+        chunks = []
         if self.cues and self.spoken_menu is not None and reading.kind != "menu" and not repeat:
-            pieces.append(("cue", "close"))
-        dialogue = reading.dialogue
+            chunks.append([("cue", "close")])
+        lines = self._lines_to_read(reading, repeat, settled)
+        if lines:
+            chunks.append([("talk", " ".join(lines))])
         if reading.kind == "menu":
-            opts = reading.options
-            same_menu = not repeat and frozenset(opts) == self.spoken_menu
-            if dialogue:
-                lines = dialogue if repeat else new_lines(dialogue, self.spoken_dialogue)
-                if lines:
-                    pieces.append(("talk", " ".join(lines)))
-            position = [("menu", "%dばんめ" % (reading.selected + 1))] if self.position and len(opts) > 1 else []
-            if len(opts) > MAX_OPTIONS or len(opts) == 1:
-                pieces.append(("menu", reading.selected_text))
-            elif same_menu:
-                pieces += [("menu", reading.selected_text)] + position
-                if reading.selected_text in (YES, NO):
-                    pieces.append(("cue", selection_cue(reading.selected_text)))
-                elif self.cues and len(opts) > 2 and reading.selected in (0, len(opts) - 1):
-                    pieces.append(("cue", "edge"))
-            else:
-                if self.cues and not repeat:
-                    pieces.append(("cue", "open"))  # after the question, before the options
-                for i, opt in enumerate(opts):
-                    pieces.append(("menu", opt))
-                    if i == reading.selected:
-                        pieces += [("cue", selection_cue(opt))] + position
-        elif reading.kind == "dialogue":
-            lines = dialogue if repeat else new_lines(dialogue, self.spoken_dialogue)
-            if lines:
-                pieces.append(("talk", " ".join(lines)))
-        elif reading.kind == "other":
-            pieces.append(("talk", " ".join(reading.other)))
-        return [p for p in pieces if p[0] == "cue" or normalize.for_speech(p[1])]
+            chunks += self._menu_chunks(reading, repeat)
+        elif reading.kind == "other" and repeat:
+            chunks.append([("talk", " ".join(reading.other))])
+        chunks = [[p for p in c if self._audible(p)] for c in chunks]
+        return [c for c in chunks if any(p[0] != "gap" for p in c)]
 
-    def remember(self, reading):
+    @staticmethod
+    def _audible(piece):
+        return piece[0] in ("cue", "gap") or bool(normalize.for_speech(piece[1]))
+
+    def _lines_to_read(self, reading, repeat, settled):
+        lines = reading.dialogue
+        if not lines:
+            return []
+        if repeat:
+            return lines
+        if reading.kind == "dialogue" and not settled:
+            lines = lines[:-1]  # the last line may still be typing
+        return new_lines(lines, self.spoken_lines)
+
+    def _menu_chunks(self, reading, repeat):
+        opts = reading.options
+        sel = reading.selected
+        position = [("menu", "%dばんめ" % (sel + 1))] if self.position and len(opts) > 1 else []
+        if len(opts) > MAX_OPTIONS or len(opts) == 1:
+            return [[("menu", reading.selected_text)]]
+        if not repeat and frozenset(opts) == self.spoken_menu:  # the cursor moved
+            chunk = [("menu", reading.selected_text)] + position
+            if reading.selected_text in (YES, NO):
+                chunk.append(("cue", selection_cue(reading.selected_text)))
+            elif self.cues and len(opts) > 2 and sel in (0, len(opts) - 1):
+                chunk.append(("cue", "edge"))
+            return [chunk]
+        chunks = []
+        for i, opt in enumerate(opts):
+            chunk = [("gap",)] if i else ([("cue", "open")] if self.cues and not repeat else [])
+            chunk.append(("menu", opt))
+            if i == sel:
+                chunk += [("cue", selection_cue(opt))] + position
+            chunks.append(chunk)
+        return chunks
+
+    def remember(self, reading, settled=True):
         """Call after a reading was handled, so the next plan knows what was said."""
-        if reading.dialogue:
-            self.spoken_dialogue = list(reading.dialogue)
+        lines = reading.dialogue if settled or reading.kind != "dialogue" else reading.dialogue[:-1]
+        if lines:
+            self.spoken_lines = list(lines)
         self.spoken_menu = frozenset(reading.options) if reading.kind == "menu" else None
 
-    # ---- rendering ------------------------------------------------------
+    # ---- making the sound --------------------------------------------------
     def _speaker(self, kind):
         return self.menu_speaker if kind == "menu" else self.speaker
 
     def _key(self, piece):
         sp = self._speaker(piece[0])
-        return (sp.voice, sp.speed, sp.volume, piece[1])
+        return (os.path.basename(sp.voice), sp.pitch, sp.speed, sp.volume, piece[1])
 
     def _synth(self, piece):
         key = self._key(piece)
-        with self.lock:
-            if key in self.cache:
-                self.cache.move_to_end(key)
-                return self.cache[key]
-        text, particles = normalize.with_particles(piece[1])
-        samples = trim(_wav_samples(self._speaker(piece[0]).wav(text, particles)))
-        with self.lock:
-            self.cache[key] = samples
-            while len(self.cache) > self.cache_size:
-                self.cache.popitem(last=False)
+        samples = self.cache.get(key)
+        if samples is None:
+            text, particles = normalize.with_particles(piece[1])
+            samples = trim(wav_samples(self._speaker(piece[0]).wav(text, particles)))
+            self.cache.put(key, samples)
         return samples
 
     def say(self, text, kind="talk"):
         """WAV for a short message of our own (e.g. 「よみあげ オフ」)."""
         return self.render([(kind, text)])
 
-    def render(self, pieces):
-        """WAV bytes for a plan (uses the cache, synthesises what's missing)."""
+    def render(self, chunk):
+        """WAV bytes for one chunk (uses the cache, synthesises what's missing)."""
         out = array.array("h")
-        for i, piece in enumerate(pieces):
-            if piece[0] == "cue":
+        for i, piece in enumerate(chunk):
+            if piece[0] == "gap":
+                out += silence(self.pause_ms - 120)  # RetroArch's own round trip adds ~0.1 s
+            elif piece[0] == "cue":
                 out += silence(60) + cue(piece[1]) + silence(60)
-                continue
-            out += self._synth(piece)
-            if i + 1 < len(pieces) and pieces[i + 1][0] != "cue":
-                out += silence(self.pause_ms)
+            else:
+                out += self._synth(piece)
+                if i + 1 < len(chunk) and chunk[i + 1][0] in ("talk", "menu"):
+                    out += silence(self.pause_ms)
         return to_wav(out)
 
-    def prepare(self, pieces):
-        """Synthesise these pieces in the background (latest request first)."""
-        todo = [p for p in pieces if p[0] != "cue"]
+    def ready(self, chunk):
+        return all(self.cache.has(self._key(p)) for p in chunk if p[0] in ("talk", "menu"))
+
+    def prepare(self, chunks, urgent=True):
+        """Make these chunks' speech in the background."""
+        todo = [p for c in chunks for p in c if p[0] in ("talk", "menu")]
+        todo = [p for p in todo if not self.cache.has(self._key(p))]
+        if not todo:
+            return
         with self.lock:
-            todo = [p for p in todo if self._key(p) not in self.cache]
-            self.wanted = todo + [p for p in self.wanted if p not in todo]
-        if todo:
-            self.wake.set()
+            rest = [p for p in self.wanted if p not in todo]
+            self.wanted = todo + rest if urgent else rest + todo
+        self.wake.set()
+
+    def warm_up(self, phrases=COMMON_MENU):
+        """Make common menu words at start-up (lowest priority)."""
+        self.prepare([[("menu", p)] for p in phrases], urgent=False)
 
     def _worker(self):
         while True:
@@ -257,4 +280,4 @@ class Narrator:
                 try:
                     self._synth(piece)
                 except Exception:
-                    pass  # it'll be retried synchronously when actually needed
+                    pass  # it'll be retried when it's actually needed
