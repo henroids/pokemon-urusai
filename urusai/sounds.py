@@ -26,6 +26,12 @@ def duration(wav_bytes):
     return (len(wav_bytes) - 44) / (2.0 * RATE)
 
 
+def pad_to(wav_bytes, seconds):
+    """The same WAV, with silence added so it lasts at least this long."""
+    samples = array.array("h", wav_bytes[44:])
+    return to_wav(samples + silence(int(1000 * seconds) - len(samples) * 1000 // RATE))
+
+
 def silence(ms):
     return array.array("h", bytes(2 * (RATE * max(0, ms) // 1000)))
 

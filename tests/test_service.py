@@ -12,7 +12,7 @@ import wave
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from synth import Canvas, dialogue_canvas, font_from, make_font  # noqa: E402
 from urusai import audio, button, pngdec, server, settings  # noqa: E402
-from urusai.tts import Speaker, voices  # noqa: E402
+from urusai.tts import VOICE_DIR, Speaker  # noqa: E402
 
 
 def tone(amplitude, n=4800, rate=48000):
@@ -382,15 +382,35 @@ class Streaming(unittest.TestCase):
         for _ in range(5):
             self.assertIsNone(self.frame(dialogue_canvas(self.g), settle=0.2))
 
-    def test_double_tap_mutes_and_unmutes(self):
+    def test_reader_off_and_on(self):
         self.frame(Canvas(self.g))
-        self.assertFalse(self.app.toggle_mute())
-        self.assertEqual(self.frame(Canvas(self.g)), [("menu", "よみあげ オフ")])
-        self.assertIsNone(self.frame(dialogue_canvas(self.g), settle=1.0))  # muted
-        self.app.press()  # the button still works while muted
-        self.assertIsNotNone(self.frame(dialogue_canvas(self.g)))
-        self.app.toggle_mute()
+        self.assertIsNone(self.app.toggle())
+        resp = self.app.handle(json.dumps({"image": base64.b64encode(
+            pngdec.encode(Canvas(self.g).image())).decode()}).encode(), {})
+        self.assertEqual(self.rendered[-1], [("menu", "よみあげ オフ")])
+        self.assertEqual(base64.b64decode(resp["image"])[1:4], b"PNG")   # shown on screen…
+        self.assertGreaterEqual((len(base64.b64decode(resp["sound"])) - 44) / 96000, 1.5)  # …1.5 s+
+        self.clock.t += 1.6
+        self.assertIsNone(self.frame(dialogue_canvas(self.g), settle=1.0))  # off: nothing read
+        self.assertFalse(self.app.press())                                   # L2 does nothing
+        self.assertIsNone(self.frame(dialogue_canvas(self.g), settle=1.0))
+        self.app.speaking_until = self.clock.t + 2.0                          # (even mid-speech)
+        self.assertFalse(self.app.want_interrupt())                          # no key presses
+        self.app.speaking_until = self.clock.t
+        self.app.toggle()
         self.assertEqual(self.frame(dialogue_canvas(self.g)), [("menu", "よみあげ オン")])
+        self.assertIsNotNone(self.frame(dialogue_canvas(self.g), settle=1.0))  # reads again
+
+    def test_turning_off_cuts_speech(self):
+        self.frame(dialogue_canvas(self.g))
+        self.clock.t = self.app.speaking_until - 1.0
+        self.assertEqual(self.app.toggle(), "cut")
+        self.assertEqual(self.frame(Canvas(self.g)), [("menu", "よみあげ オフ")])
+
+    def test_turning_on_starts_a_stopped_stream(self):
+        self.clock.t += 100
+        self.app.muted = True
+        self.assertEqual(self.app.toggle(), "start")
 
     # -- stopping speech --
     def test_game_button_stops_speech_in_menus(self):
@@ -432,8 +452,8 @@ class Streaming(unittest.TestCase):
         self.clock.t = self.app.speaking_until - 1.0
         self.assertTrue(self.app.want_interrupt())               # A on a finished box
         self.assertEqual(self.frame(battle_menu(self.g, 14, 9)), "cut")
-        self.app.toggle_mute()
-        self.frame(battle_menu(self.g, 14, 9))                     # 「よみあげ オフ」…
+        self.app.announce = "よみあげ オン"
+        self.frame(battle_menu(self.g, 14, 9))                     # 「よみあげ オン」…
         self.clock.t = self.app.speaking_until - 0.5
         self.assertTrue(self.app.want_interrupt())               # …cut too
 
@@ -515,6 +535,41 @@ class Narration(unittest.TestCase):
         from urusai.sounds import cue, to_wav
         for name in ("select", "open", "close", "edge"):
             self.assertEqual(to_wav(cue(name))[:4], b"RIFF")
+
+    def test_combo_toggles_once_per_press(self):
+        from urusai import button
+        fired = []
+        game = []
+        w = button.ButtonWatcher(lambda: "L2", lambda: None, lambda: game.append(1), log=io.StringIO(),
+                                 on_combo=lambda: fired.append(1))
+        w.combo = button.combo_codes("L1+R1")
+        L1, R1 = 0x136, 0x137
+        for code, value in ((L1, 1), (R1, 1), (R1, 0), (R1, 1), (L1, 0), (R1, 0)):  # one go, a wobble
+            w.event(button.EV_KEY, code, value)
+        self.assertEqual(fired, [1])
+        for code, value in ((R1, 1), (L1, 1)):                                     # again, other order
+            w.event(button.EV_KEY, code, value)
+        self.assertEqual(fired, [1, 1])
+        w.event(button.EV_KEY, L1, 0)
+        w.event(button.EV_KEY, R1, 0)
+        w.event(button.EV_KEY, L1, 1)                                               # L1 alone: nothing
+        self.assertEqual((fired, game), ([1, 1], []))                               # and no speech cut
+        self.assertEqual(button.combo_codes("L1+R1"), {0x136, 0x137})
+        self.assertEqual(button.combo_codes("off"), set())
+        with self.assertRaises(ValueError):
+            button.combo_codes("L1")
+
+    def test_banner_uses_the_game_font(self):
+        from urusai import banner
+        from urusai.font import Font
+        font = Font.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "font", "gen1_jp.json"))
+        self.assertEqual(banner.layout("あげ"), [("あ", None), ("け", "゛")])
+        px = banner.render(font, "よみあげ オフ")
+        ink = sum(p == banner.INK for row in px for p in row)
+        self.assertGreater(ink, 200)                       # border + letters
+        self.assertEqual(px[0][0], banner.CLEAR)          # the game shows around it
+        data = banner.png(font, "よみあげ オン")
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
 
     def test_held_buttons_are_tracked(self):
         from urusai import button
@@ -599,7 +654,8 @@ class VirtualKeys(unittest.TestCase):
 
 class Bundle(unittest.TestCase):
     def test_bundled_voices(self):
-        self.assertTrue({"mei", "tohoku", "nitech"} <= set(voices()))
+        for name in ("mei", "tohoku", "nitech"):
+            self.assertTrue(os.path.exists(os.path.join(VOICE_DIR, name + ".htsvoice")))
 
 
 if __name__ == "__main__":

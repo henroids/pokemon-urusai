@@ -36,11 +36,11 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, pngdec, reader, screen
+from . import __version__, banner, pngdec, reader, screen
 from .button import ButtonWatcher, Taps
 from .font import Font
 from .settings import Settings
-from .sounds import duration, silence, to_wav
+from .sounds import duration, pad_to, silence, to_wav
 from .speech import Narrator
 from .tts import HERE, Speaker
 
@@ -56,6 +56,7 @@ DUPLICATE = 0.06       # two requests closer than this: the second is a stray lo
 INTERRUPT_MIN_LEFT = 0.3  # don't bother stopping speech that's about to end
 CUT = to_wav(silence(120))  # replaces (stops) the clip that's playing
 CUT_TIMEOUT = 1.5      # a stop request whose hotkey never arrived is given up
+MESSAGE_SECONDS = 1.5   # 「よみあげ オン／オフ」 stays on screen at least this long
 
 
 class App:
@@ -74,8 +75,8 @@ class App:
         self.last_frame = -1e9      # when the last real frame was handled
         self.speaking_until = -1e9  # when the clip we last sent ends
         self.pending = None         # time of an unserved "say it again"
-        self.announce = None        # a message of our own to say next (e.g. 「よみあげ オフ」)
-        self.muted = False          # double tap: auto reading paused
+        self.announce = None        # a message of our own to say (and show) next, e.g. 「よみあげ オフ」
+        self.muted = False          # L1+R1 or double tap: the reader is off
         self.cutting = False        # a hotkey-made request is coming to stop the speech
         self.last_cut = -1e9
         self.can_interrupt = False  # set when the virtual keyboard works
@@ -117,15 +118,27 @@ class App:
     def press(self):
         """Single tap: say it again. Returns True if the stream must be (re)started."""
         with self.lock:
+            if self.muted:
+                return False        # the reader is off: the button does nothing
             self.pending = self.clock()
             return not self.stream_alive()
 
-    def toggle_mute(self):
-        """Double tap: pause/resume auto reading. Returns True if the stream must be started."""
+    def toggle(self):
+        """L1+R1 or double tap: the reader off/on, said and shown on screen.
+        Returns "start" if the stream must be started, "cut" if speech is
+        playing and must stop for the message, else None."""
         with self.lock:
             self.muted = not self.muted
             self.announce = "よみあげ オフ" if self.muted else "よみあげ オン"
-            return not self.stream_alive()
+            self.queue.clear()
+            self.pending = None
+            now = self.clock()
+            if not self.stream_alive(now):
+                return "start"
+            if self.can_interrupt and now < self.speaking_until - INTERRUPT_MIN_LEFT and not self.cutting:
+                self.cutting, self.last_cut = True, now
+                return "cut"
+            return None
 
     def want_interrupt(self):
         """A game button was pressed. True = stop the speech now (press the hotkey twice).
@@ -135,7 +148,7 @@ class App:
             now = self.clock()
             if self.cutting and now - self.last_cut > CUT_TIMEOUT:
                 self.cutting = False  # the hotkey never arrived
-            if (not self.can_interrupt or self.settings["interrupt"] != "on" or self.cutting
+            if (self.muted or not self.can_interrupt or self.settings["interrupt"] != "on" or self.cutting
                     or now > self.speaking_until - INTERRUPT_MIN_LEFT or now - self.last_cut < 0.3):
                 return False
             self.cutting, self.last_cut = True, now
@@ -190,10 +203,13 @@ class App:
             if sig == self.queue_sig and not cut:
                 return self._send(self.queue.popleft(), img, reading)
             self.queue.clear()
-        # 2. our own announcements
+        # 2. our own announcements, shown on screen until the next reply
         if self.announce:
             text, self.announce = self.announce, None
-            return self._send_wav(n.say(text, "menu"), img, text)
+            return self._send_wav(pad_to(n.say(text, "menu"), MESSAGE_SECONDS), img, text,
+                                  overlay=banner.png(self.font, text))
+        if self.muted:
+            return None           # the reader is off
 
         ready = {"menu": stable >= STABLE_MENU, "dialogue": True,
                  "other": stable >= STABLE_MENU, "none": stable >= BOX_GONE}[reading.kind]
@@ -246,14 +262,17 @@ class App:
     def _send(self, chunk, img, reading):
         return self._send_wav(self.narrator.render(chunk), img, reading.flat())
 
-    def _send_wav(self, wav, img, text):
+    def _send_wav(self, wav, img, text, overlay=None):
         # Measured *after* rendering: synthesis on the handheld can take a second or two.
         self.speaking_until = self.clock() + duration(wav)
         try:
             self.capture(img, text)
         except OSError as e:  # a full or read-only SD card must never stop the speech
             sys.stderr.write("urusai: capture failed: %r\n" % e)
-        return {"sound": base64.b64encode(wav).decode("ascii"), "auto": "auto"}
+        reply = {"sound": base64.b64encode(wav).decode("ascii"), "auto": "auto"}
+        if overlay:
+            reply["image"] = base64.b64encode(overlay).decode("ascii")
+        return reply
 
     def capture(self, img, text):
         """Keep the newest N spoken frames (+ what was read); oldest are deleted."""
@@ -396,7 +415,7 @@ def write_status(app, watcher, starter, port):
                 os.path.basename(n.speaker.voice), os.path.basename(n.menu_speaker.voice),
                 n.menu_speaker.pitch, n.speaker.volume))
             f.write("auto read: %s, autostart: %s, interrupt: %s\n" % (s["auto_read"], s["autostart"], s["interrupt"]))
-            f.write("button: %s\n" % (watcher.status if watcher else "off"))
+            f.write("button: %s, reader on/off: %s\n" % (watcher.status if watcher else "off", s["toggle_combo"]))
             f.write("starter: %s\n" % (starter.status if starter else "off"))
             f.write("settings: %s\n" % s.path)
     except OSError as e:
@@ -430,9 +449,12 @@ def main(argv=None):
             if app.press():
                 starter.kick("button")
 
-        def mute():
-            if app.toggle_mute():
-                starter.kick("button")
+        def toggle():
+            what = app.toggle()
+            if what == "start":
+                starter.kick("reader on/off")
+            elif what == "cut":
+                starter.interrupt()
 
         def game_input():  # runs in the watcher thread: don't block it
             if app.want_interrupt():
@@ -442,8 +464,13 @@ def main(argv=None):
             settings.reload()
             return settings["button"]
 
-        taps = Taps(say_again, mute)
-        watcher = ButtonWatcher(current_button, taps.press, game_input)
+        def current_combo():
+            return settings["toggle_combo"]
+
+        taps = Taps(say_again, toggle)
+        watcher = ButtonWatcher(current_button, taps.press, game_input,
+                                get_combo=current_combo,
+                                on_combo=lambda: threading.Thread(target=toggle, daemon=True).start())
         starter.watcher = watcher
         watcher.start()
         threading.Timer(4.0, write_status, (app, watcher, starter, a.port)).start()

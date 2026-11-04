@@ -1,6 +1,6 @@
 # Pokémon Urusai
 
-An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a pip marking the selected one. **Tap L2** to hear it again, **double-tap** to switch automatic reading off/on. The game keeps running while it talks.
+An offline Japanese screen reader for **Gen 1 Pokémon (赤・緑・青・ピカチュウ)**. Text is read aloud as it appears: dialogue, and menu choices as the cursor moves, with a pip marking the selected one. **Tap L2** to hear it again; press **L1+R1** (or double-tap L2) to switch the reader off/on, with 「よみあげ オン／オフ」 shown on screen. The game keeps running while it talks.
 
 Everything runs on the handheld, with no internet and no PC:
 
@@ -29,7 +29,7 @@ Everything runs on the handheld, with no internet and no PC:
 - **Menus and questions**: the question, an "open" sound, then every option in the menu voice, with a short "pip" after the selected one (none for はい/いいえ). Moving the cursor reads **just the new option**, with a low "tok" at the first/last one. A "close" sound when the menu goes away. Big grids (name entry) read only the selected letter.
 - **Stops when you move on**: menus are read one option at a time, so moving the cursor or closing the menu drops the rest. Any game button pressed mid-speech cuts off whatever is being said (dialogue, menu or announcement), like a screen reader; after a press, the same screen stays quiet and only what's new is read: the reader presses RetroArch's AI hotkey twice, and the new reply replaces the clip that's playing.
 - **Instant**: speech is cached in memory and on disk (`/opt/urusai/cache`), made in the background as text appears, and common menu words are made at start-up.
-- **Tap L2**, any time: the whole screen again, once, including screens that aren't read automatically (e.g. the Pokédex). **Double-tap**: 「よみあげ オフ/オン」.
+- **Tap L2**, any time: the whole screen again, once, including screens that aren't read automatically (e.g. the Pokédex). **L1+R1** or **double-tap L2**: the reader off/on, 「よみあげ オフ/オン」 said and shown in a box on screen.
 - Text is read in one flow (no pauses at the game's word spaces). The spaces are still used to check particles: a は/へ ending a phrase must sound "wa"/"e", and if Open JTalk misreads one (e.g. かれは as 枯れ葉 "kareha") it's corrected and re-spoken.
 - All voices are levelled to the same loudness; `menu_position = on` adds 「2ばんめ」 after the selection.
 
@@ -47,7 +47,8 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |
 | `urusai/font.py` | tile → label table |
 | `urusai/tts.py`, `audio.py`, `normalize.py` | Open JTalk, loudness, text clean-up for speech |
-| `urusai/button.py` | gamepad watcher + single/double tap detection |
+| `urusai/button.py` | gamepad watcher: single/double tap, the L1+R1 combo, held buttons |
+| `urusai/banner.py` | on-screen messages (「よみあげ オン」) drawn with the game's font |
 | `urusai/settings.py` | `urusai_settings.txt` |
 | `font/gen1_jp.json` | the font, built by `tools/build_font.py` from `tests/frames/` |
 | `tests/frames/` | 36 reference frames (160×144) from 青, with expected readings |

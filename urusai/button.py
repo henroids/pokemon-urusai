@@ -48,6 +48,17 @@ def button_code(name):
         raise ValueError("unknown button %r (use one of %s)" % (name, " ".join(BUTTONS)))
 
 
+def combo_codes(spec):
+    """'L1+R1' -> {0x136, 0x137}. Empty set = off."""
+    names = [n for n in str(spec).replace(" ", "").split("+") if n]
+    if not names or names[0].upper() in ("OFF", "NONE", "NO"):
+        return frozenset()
+    codes = frozenset(button_code(n) for n in names)
+    if len(codes) != 2:
+        raise ValueError("toggle_combo needs two different buttons, e.g. L1+R1")
+    return codes
+
+
 def has_key(caps_hex, code):
     """Test a bit in a sysfs key capability bitmap ('ffff 0 3ff...' words, MSB first)."""
     words = caps_hex.split()
@@ -69,14 +80,20 @@ def devices_with(code, root="/sys/class/input"):
 
 
 class ButtonWatcher(threading.Thread):
-    """Calls on_press() whenever the configured button goes down, and
-    on_game_input() for any other game button (A, B, Start, D-pad…)."""
+    """Calls on_press() whenever the configured button goes down,
+    on_combo() when both buttons of the combo are down (L1+R1: reader on/off),
+    and on_game_input() for any other game button (A, B, Start, D-pad…)."""
 
-    def __init__(self, get_button, on_press, on_game_input=None, log=sys.stderr):
+    def __init__(self, get_button, on_press, on_game_input=None, log=sys.stderr,
+                 get_combo=lambda: "off", on_combo=None):
         super().__init__(daemon=True, name="urusai-button")
         self.get_button = get_button  # callable -> current button name (settings can change)
         self.on_press = on_press
         self.on_game_input = on_game_input or (lambda: None)
+        self.get_combo = get_combo
+        self.on_combo = on_combo or (lambda: None)
+        self.combo_armed = True            # fires once per press of both buttons
+        self.code, self.combo, self.last = None, frozenset(), 0.0
         self.log = log
         self.status = "starting"
         self.fds = []
@@ -108,6 +125,31 @@ class ButtonWatcher(threading.Thread):
                     fcntl.ioctl(fd, EVIOCGRAB, 0)
                 except OSError:
                     pass
+
+    def event(self, etype, ecode, value):
+        """One input event from the gamepad."""
+        self._track(etype, ecode, value)
+        if etype == EV_KEY and ecode in self.combo:
+            if value == 1 and self.combo_armed and self.combo <= self.held:
+                self.combo_armed = False
+                self.on_combo()
+            elif value == 0 and not self.combo & self.held:
+                self.combo_armed = True
+        elif etype == EV_KEY and ecode == self.code and value == 1:
+            now = time.monotonic()
+            if now - self.last >= DEBOUNCE:
+                self.last = now
+                self.on_press()
+        elif (etype == EV_KEY and value == 1 and ecode not in NOT_GAME_INPUT) or \
+                (etype == EV_ABS and ecode in ABS_HATS and value != 0):
+            self.on_game_input()
+
+    def get_combo_codes(self, current):
+        """The combo setting now (the old one if the new one is invalid)."""
+        try:
+            return combo_codes(self.get_combo())
+        except ValueError:
+            return current
 
     def _track(self, etype, ecode, value):
         if etype == EV_KEY and value in (0, 1):
@@ -150,23 +192,19 @@ class ButtonWatcher(threading.Thread):
             self.changed.notify_all()
         self.status = "watching %s on %s" % (name, ", ".join(paths))
         self.log.write("urusai: %s\n" % self.status)
-        last = 0.0
         try:
-            while self.get_button() == name:
+            combo = combo_codes(self.get_combo())
+        except ValueError as e:
+            self.log.write("urusai: %s\n" % e)
+            combo = frozenset()
+        self.code, self.combo, self.last = code, combo, 0.0
+        try:
+            while self.get_button() == name and self.get_combo_codes(combo) == combo:
                 ready, _, _ = select.select(fds, [], [], 2.0)
                 for fd in ready:
                     data = os.read(fd, EVENT.size * 64)
                     for off in range(0, len(data) - EVENT.size + 1, EVENT.size):
-                        _, _, etype, ecode, value = EVENT.unpack_from(data, off)
-                        self._track(etype, ecode, value)
-                        if etype == EV_KEY and ecode == code and value == 1:
-                            now = time.monotonic()
-                            if now - last >= DEBOUNCE:
-                                last = now
-                                self.on_press()
-                        elif (etype == EV_KEY and value == 1 and ecode not in NOT_GAME_INPUT) or \
-                                (etype == EV_ABS and ecode in ABS_HATS and value != 0):
-                            self.on_game_input()
+                        self.event(*EVENT.unpack_from(data, off)[2:])
         finally:
             with self.changed:
                 self.fds, self.held = [], set()

@@ -10,7 +10,8 @@ DEFAULT_PATH = "/roms/urusai_settings.txt"
 DEFAULTS = {
     "auto_read": "on",       # read new dialogue and menu choices automatically
     "autostart": "on",       # switch the reader on by itself when a game starts
-    "button": "L2",          # tap = say it again, double tap = reading on/off: L1 R1 L2 R2 L3 R3 SELECT START, or off
+    "button": "L2",          # tap = say it again, double tap = reader off/on: L1 R1 L2 R2 L3 R3 SELECT START, or off
+    "toggle_combo": "L1+R1",  # press both together: reader off/on, shown on screen
     "sound_cues": "on",      # sounds when a menu opens/closes and at the first/last option
     "interrupt": "on",       # stop talking when a game button is pressed
     "menu_position": "off",  # say 「2ばんめ」 after the selected option
@@ -32,9 +33,13 @@ auto_read = {auto_read}
 # (otherwise press the button, or Select + Y, once per game)
 autostart = {autostart}
 
-# Button (no Select needed): tap = say it again, double tap = reading off/on.
+# Button (no Select needed): tap = say it again, double tap = reader off/on.
 #   L1 R1 L2 R2 L3 R3 SELECT START, or off
 button = {button}
+
+# Press these two together to switch the reader off/on. 「よみあげ オフ／オン」
+# is said and shown on screen. Two buttons joined by +, e.g. L1+R1, or off.
+toggle_combo = {toggle_combo}
 
 # Sounds when a menu opens or closes, and at the first/last option: on / off
 # (the pip after the selected option is always on; はい/いいえ have no sound)

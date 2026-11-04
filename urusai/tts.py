@@ -40,11 +40,6 @@ def parse_voice(spec):
     return m.group(1), float(m.group(2).replace(" ", "")) if m.group(2) else 0.0
 
 
-def voices():
-    """Names of the bundled voices, e.g. ['mei', 'mei_happy', 'nitech', 'tohoku', …]."""
-    return sorted(os.path.basename(p)[:-9] for p in glob.glob(os.path.join(VOICE_DIR, "*.htsvoice")))
-
-
 def find_voice(name):
     """voice/<name>.htsvoice, else any bundled voice, else a system one."""
     return _first([os.environ.get("URUSAI_VOICE", ""),

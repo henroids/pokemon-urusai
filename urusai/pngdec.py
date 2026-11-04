@@ -19,11 +19,6 @@ class Image:
         self.height = height
         self.rows = rows  # list of bytes/bytearray, 3 bytes per pixel
 
-    def pixel(self, x, y):
-        r = self.rows[y]
-        i = x * 3
-        return r[i], r[i + 1], r[i + 2]
-
 
 def decode(data):
     if data[:8] != _SIG:
@@ -110,12 +105,17 @@ def _to_rgb(line, ctype, width, palette):
 
 def encode(img):
     """Encode an Image as an 8-bit RGB PNG (used for captures and tests)."""
-    raw = b"".join(b"\x00" + bytes(r) for r in img.rows)
+    return encode_rows(img.width, img.height, img.rows, 2)
+
+
+def encode_rows(width, height, rows, color_type):
+    """Rows of pixel bytes -> PNG (color_type 2 = RGB, 6 = RGBA)."""
+    raw = b"".join(b"\x00" + bytes(r) for r in rows)
 
     def chunk(kind, body):
         c = struct.pack(">I", len(body)) + kind + body
         return c + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
 
-    return (_SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", img.width, img.height, 8, 2, 0, 0, 0))
+    return (_SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
