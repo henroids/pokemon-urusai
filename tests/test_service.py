@@ -516,6 +516,57 @@ class Narration(unittest.TestCase):
         for name in ("select", "open", "close", "edge"):
             self.assertEqual(to_wav(cue(name))[:4], b"RIFF")
 
+    def test_held_buttons_are_tracked(self):
+        from urusai import button
+        w = button.ButtonWatcher(lambda: "L2", lambda: None, log=io.StringIO())
+        w._track(button.EV_KEY, 0x130, 1)                 # A down
+        w._track(button.EV_ABS, 0x11, -1)                 # D-pad up (hat)
+        self.assertFalse(w.wait_released(0.01))
+        w._track(button.EV_KEY, 0x130, 2)                 # autorepeat: still down
+        w._track(button.EV_KEY, 0x130, 0)
+        self.assertFalse(w.wait_released(0.01))
+        w._track(button.EV_ABS, 0x11, 0)
+        self.assertTrue(w.wait_released(0.01))
+
+    def test_hotkey_never_pressed_with_a_held_button(self):
+        """F8 is hotkey enable: with A held RetroArch would see Select+A (pause)."""
+        import contextlib
+        from urusai import server
+        events = []
+
+        class Kbd:
+            def chord(self, hold=0.1):
+                events.append(("chord", hold))
+
+        class Watcher:
+            held = True
+            def wait_released(self, timeout):
+                events.append(("wait", timeout))
+                return not self.held
+            @contextlib.contextmanager
+            def grabbed(self):
+                events.append("grab")
+                yield
+                events.append("ungrab")
+
+        class App:
+            cutting = True
+            def cut_abandoned(self):
+                self.cutting = False
+
+        st = server.Starter.__new__(server.Starter)
+        self.app = App()
+        st.app, st.log, st.kbd, st.lock = self.app, io.StringIO(), Kbd(), __import__("threading").Lock()
+        st.watcher = Watcher()
+        st.interrupt()                                    # A still held after 1 s: no keys at all
+        self.assertEqual(events, [("wait", server.Starter.RELEASE_WAIT)])
+        self.assertFalse(self.app.cutting)
+        events.clear()
+        st.watcher.held = False
+        st.interrupt()
+        self.assertEqual(events, [("wait", server.Starter.RELEASE_WAIT), "grab",
+                                  ("chord", 0.06), ("chord", 0.06), "ungrab"])
+
     def test_taps(self):
         import time
         events = []

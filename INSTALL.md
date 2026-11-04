@@ -103,6 +103,20 @@ Put the games SD card in your PC and check these files:
   - the URL is `http://127.0.0.1:4404/`
 - **It reads the wrong thing, or a word is skipped:** send the `.png` and `.txt` files.
 
+## If the game pauses by itself
+
+Fixed in 0.6.5. Earlier versions could press RetroArch's hotkey button
+(the same as holding **Select**) while a game button was still down, so
+RetroArch saw a hotkey such as **Select+A** (pause) or **Select+D-pad up**
+(frame advance, which freezes the picture). The reader now waits until
+every button is released, and holds the gamepad for that split second.
+
+To un-pause: press **Select+A** (the pause toggle on ArkOS-based systems).
+**Start** alone doesn't work, because the game itself is paused, not the
+Pokémon menu. If Select+A doesn't do it, press **Select+X** to open the
+RetroArch menu, choose **Resume**, and check which button is set under
+*Settings → Input → Hotkeys → Pause*.
+
 ## Updating
 
 Copy the new `PokemonUrusai` folder and `.sh` over the old ones in `ports`, then run **Install Pokemon Urusai** again. Your `urusai_settings.txt` is kept.

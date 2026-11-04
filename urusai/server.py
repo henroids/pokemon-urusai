@@ -26,6 +26,7 @@ Run:  python3 -m urusai.server [--settings FILE] [--capture DIR] [--cache DIR]
 import argparse
 import base64
 import collections
+import contextlib
 import datetime
 import json
 import os
@@ -141,6 +142,10 @@ class App:
             self.queue.clear()
             self.hold = self.sig                # a press means "stop": quiet until the screen changes
             return True
+
+    def cut_abandoned(self):
+        with self.lock:
+            self.cutting = False
 
     # ---- one frame from RetroArch ------------------------------------------
     def handle(self, body, query):
@@ -319,7 +324,13 @@ def retroarch_pids():
 class Starter:
     """Presses RetroArch's AI Service hotkey (F8+F6) through a virtual keyboard:
     to start the stream when a game starts or the button finds it stopped, and
-    twice in a row to stop speech when a game button is pressed."""
+    twice in a row to stop speech when a game button is pressed.
+
+    F8 is RetroArch's hotkey enable (like holding Select), so it is only
+    pressed once the player has let go of every button, with the pad
+    grabbed meanwhile: otherwise a held A would become Select+A (pause)."""
+
+    RELEASE_WAIT = 1.0   # give up on a cut if a button is still held this long
 
     def __init__(self, app, log=sys.stderr):
         self.app, self.log = app, log
@@ -332,19 +343,30 @@ class Starter:
         except Exception as e:  # no /dev/uinput, no permission…
             self.status = "no virtual keyboard (%s) - press Select+Y once to start" % e
         self.started_for = set()
+        self.watcher = None          # set by main: knows which buttons are held
+
+    def _press(self, *holds, wait=RELEASE_WAIT):
+        """F8+F6 once per hold, never together with a held game button."""
+        with self.lock:
+            w = self.watcher
+            if w and not w.wait_released(wait):
+                return False
+            with (w.grabbed() if w else contextlib.nullcontext()):
+                for i, hold in enumerate(holds):
+                    if i:
+                        time.sleep(0.06)
+                    self.kbd.chord(hold=hold)
+            return True
 
     def kick(self, why):
         if self.kbd and not self.app.stream_alive():
             self.log.write("urusai: starting the reader (%s)\n" % why)
-            with self.lock:
-                self.kbd.chord()
+            self._press(0.1, wait=30)
 
     def interrupt(self):
-        if self.kbd:
-            with self.lock:
-                self.kbd.chord(hold=0.06)   # auto mode off…
-                time.sleep(0.06)
-                self.kbd.chord(hold=0.06)   # …and a request right now
+        """Hotkey twice: auto mode off, then a request right now."""
+        if self.kbd and not self._press(0.06, 0.06):
+            self.app.cut_abandoned()   # the button stayed down: let the clip finish
 
     def watch_games(self):
         seen = {}
@@ -412,9 +434,9 @@ def main(argv=None):
             if app.toggle_mute():
                 starter.kick("button")
 
-        def game_input():
+        def game_input():  # runs in the watcher thread: don't block it
             if app.want_interrupt():
-                starter.interrupt()
+                threading.Thread(target=starter.interrupt, daemon=True).start()
 
         def current_button():
             settings.reload()
@@ -422,6 +444,7 @@ def main(argv=None):
 
         taps = Taps(say_again, mute)
         watcher = ButtonWatcher(current_button, taps.press, game_input)
+        starter.watcher = watcher
         watcher.start()
         threading.Timer(4.0, write_status, (app, watcher, starter, a.port)).start()
     write_status(app, watcher, starter, a.port)

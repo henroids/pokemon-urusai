@@ -3,7 +3,14 @@
 RetroArch only fires hotkeys while its "hotkey enable" button (Select on
 dArkOS) is held, so the "say it again" button is watched here instead.
 No third-party modules: input events are read straight from /dev/input.
+
+It also keeps track of which buttons are held, so the virtual keyboard
+never presses hotkey-enable while the player holds one: RetroArch would
+take that as Select + the button (Select+A = pause, Select+D-pad = fast
+forward/rewind on dArkOS).
 """
+import contextlib
+import fcntl
 import glob
 import os
 import select
@@ -17,6 +24,7 @@ EV_ABS = 0x03
 ABS_HATS = (0x10, 0x11)          # D-pad on pads that report it as a hat
 NOT_GAME_INPUT = {0x13A, 0x13C}   # Select (RetroArch hotkey enable), Menu/Function
 EVENT = struct.Struct("llHHi")  # struct input_event (native long = time fields)
+EVIOCGRAB = 0x40044590          # _IOW('E', 0x90, int): only we get the pad's events
 
 BUTTONS = {
     "A": 0x130, "B": 0x131, "X": 0x133, "Y": 0x134,
@@ -71,6 +79,49 @@ class ButtonWatcher(threading.Thread):
         self.on_game_input = on_game_input or (lambda: None)
         self.log = log
         self.status = "starting"
+        self.fds = []
+        self.held = set()                  # key codes and hat axes that are down
+        self.changed = threading.Condition()
+
+    def wait_released(self, timeout):
+        """Wait until no button is held. False if one still is after timeout."""
+        with self.changed:
+            return self.changed.wait_for(lambda: not self.held, timeout)
+
+    @contextlib.contextmanager
+    def grabbed(self):
+        """Keep new presses away from RetroArch for a moment (EVIOCGRAB)."""
+        with self.changed:
+            fds = list(self.fds)
+        done = []
+        try:
+            for fd in fds:
+                try:
+                    fcntl.ioctl(fd, EVIOCGRAB, 1)
+                    done.append(fd)
+                except OSError:
+                    pass
+            yield
+        finally:
+            for fd in done:
+                try:
+                    fcntl.ioctl(fd, EVIOCGRAB, 0)
+                except OSError:
+                    pass
+
+    def _track(self, etype, ecode, value):
+        if etype == EV_KEY and value in (0, 1):
+            key = ecode
+        elif etype == EV_ABS and ecode in ABS_HATS:
+            key, value = ("hat", ecode), int(value != 0)
+        else:
+            return
+        with self.changed:
+            if value:
+                self.held.add(key)
+            else:
+                self.held.discard(key)
+            self.changed.notify_all()
 
     def run(self):
         while True:
@@ -94,6 +145,9 @@ class ButtonWatcher(threading.Thread):
             time.sleep(10)
             return
         fds = [os.open(p, os.O_RDONLY | os.O_NONBLOCK) for p in paths]
+        with self.changed:
+            self.fds, self.held = fds, set()
+            self.changed.notify_all()
         self.status = "watching %s on %s" % (name, ", ".join(paths))
         self.log.write("urusai: %s\n" % self.status)
         last = 0.0
@@ -104,6 +158,7 @@ class ButtonWatcher(threading.Thread):
                     data = os.read(fd, EVENT.size * 64)
                     for off in range(0, len(data) - EVENT.size + 1, EVENT.size):
                         _, _, etype, ecode, value = EVENT.unpack_from(data, off)
+                        self._track(etype, ecode, value)
                         if etype == EV_KEY and ecode == code and value == 1:
                             now = time.monotonic()
                             if now - last >= DEBOUNCE:
@@ -113,6 +168,9 @@ class ButtonWatcher(threading.Thread):
                                 (etype == EV_ABS and ecode in ABS_HATS and value != 0):
                             self.on_game_input()
         finally:
+            with self.changed:
+                self.fds, self.held = [], set()
+                self.changed.notify_all()
             for fd in fds:
                 os.close(fd)
 
