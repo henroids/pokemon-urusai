@@ -56,6 +56,7 @@ DUPLICATE = 0.06       # two requests closer than this: the second is a stray lo
 INTERRUPT_MIN_LEFT = 0.3  # don't bother stopping speech that's about to end
 CUT = to_wav(silence(120))  # replaces (stops) the clip that's playing
 CUT_TIMEOUT = 1.5      # a stop request whose hotkey never arrived is given up
+GBA_POLL = 1.0         # seconds between frames of a GBA game (nothing is read there yet)
 MESSAGE_SECONDS = 1.5   # 「よみあげ オン／オフ」 stays on screen at least this long
 
 
@@ -171,7 +172,11 @@ class App:
                 return {"error": NO_TEXT}  # a stray second loop: no "auto" ends it
             self.last_arrival = arrival
         req = json.loads(body.decode("utf-8"))
-        img = screen.to_gb_frame(pngdec.decode(base64.b64decode(req["image"])))
+        raw = pngdec.decode(base64.b64decode(req["image"]))
+        if screen.is_gba(raw):       # GBA games aren't supported yet: stay quiet, check rarely
+            self.sleep(GBA_POLL)
+            return {"auto": "auto"}
+        img = screen.to_gb_frame(raw)
         with self.lock:
             now = self.clock()
             fresh = not self.stream_alive(now)  # the stream (re)started: reply with something real

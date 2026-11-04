@@ -5,6 +5,12 @@ GB_W, GB_H = 160, 144
 COLS, ROWS = GB_W // 8, GB_H // 8
 
 
+def is_gba(img):
+    """A Game Boy Advance frame (240x160 or a whole multiple): not ours to read yet."""
+    k = img.width // 240
+    return k >= 1 and (img.width, img.height) == (240 * k, 160 * k)
+
+
 def to_gb_frame(img):
     """Return a 160x144 Image from whatever RetroArch / a phone sent."""
     if (img.width, img.height) == (GB_W, GB_H):

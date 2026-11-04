@@ -11,7 +11,7 @@ import wave
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from synth import Canvas, dialogue_canvas, font_from, make_font  # noqa: E402
-from urusai import audio, button, pngdec, server, settings  # noqa: E402
+from urusai import audio, button, pngdec, screen, server, settings  # noqa: E402
 from urusai.tts import VOICE_DIR, Speaker  # noqa: E402
 
 
@@ -400,6 +400,12 @@ class Streaming(unittest.TestCase):
         self.app.toggle()
         self.assertEqual(self.frame(dialogue_canvas(self.g)), [("menu", "よみあげ オン")])
         self.assertIsNotNone(self.frame(dialogue_canvas(self.g), settle=1.0))  # reads again
+
+    def test_gba_frames_are_left_alone(self):
+        img = pngdec.Image(240, 160, [bytes(240 * 3)] * 160)
+        body = json.dumps({"image": base64.b64encode(pngdec.encode(img)).decode()}).encode()
+        self.assertEqual(self.app.handle(body, {}), {"auto": "auto"})
+        self.assertFalse(screen.is_gba(dialogue_canvas(self.g).image()))
 
     def test_turning_off_cuts_speech(self):
         self.frame(dialogue_canvas(self.g))
