@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Rebuild font/gen1_jp.json from Henry's reference screenshots.
+"""Rebuild font/gb_jp.json from Henry's reference screenshots, plus the
+letters of pixel fonts of the Gen 1 and Gen 2 lettering (font/sources/,
+made by tools/otf_tiles.py), so letters not in the screenshots (♂/♀, small
+ァィゥェォ, 円…) and 金・銀・クリスタル are read too. Screenshot labels
+win any conflict.
 
-  build_font.py [FRAMES_DIR] [--out font/gen1_jp.json]
+  build_font.py [FRAMES_DIR] [--out font/gb_jp.json]
 
 FRAMES_DIR (default tests/frames) holds the numbered reference frames
 01.png … 36.png, captured from 青 / Blue. Each entry below says what text
@@ -20,6 +24,8 @@ from urusai import pngdec, reader, screen  # noqa: E402
 from urusai.font import Font  # noqa: E402
 
 SPLIT = {"゙": "゛", "゚": "゜"}
+# label -> [tile hex], from tools/otf_tiles.py; Red (Gen 1) first, then Silver (Gen 2: ユ/ロ differ)
+GLYPHS = [os.path.join(ROOT, "font", "sources", n + ".json") for n in ("pokemon-red-jp-gb", "pokemon-silver-jp-gbc")]
 
 # (shot, row, col, text)  — text runs left to right, one tile per character
 TEXT = [
@@ -191,6 +197,12 @@ def build(frames, log=print):
         if not g[r][c]:
             raise ValueError("%s@%d:%d is blank" % (shot, r, c))
         put(g[r][c], label, "%s@%d:%d" % (shot, r, c))
+    for path in GLYPHS:
+        import json
+        with open(path, encoding="utf-8") as f:
+            for label, hexes in json.load(f).items():
+                for h in hexes:
+                    put(int(h, 16), label, "%s:%s" % (os.path.basename(path), label))
     return font
 
 
@@ -203,7 +215,7 @@ def readings(font, frames):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("frames", nargs="?", default=os.path.join(ROOT, "tests", "frames"))
-    p.add_argument("--out", default=os.path.join(ROOT, "font", "gen1_jp.json"))
+    p.add_argument("--out", default=os.path.join(ROOT, "font", "gb_jp.json"))
     a = p.parse_args()
     font = build(a.frames)
     font.save(a.out)

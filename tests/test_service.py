@@ -567,20 +567,21 @@ class Narration(unittest.TestCase):
             f.write('input_enable_hotkey_btn = "8"\ninput_rewind_btn = "6"\ninput_save_state_btn = "1"\n')
         with open(pad, "w") as f:
             f.write('input_l2_btn = "6"\ninput_player1_l2_btn = "6"\ninput_hold_fast_forward_btn = "6"\n')
+        text = lambda path: "\n".join(racfg.read(path))
         files = racfg.with_autoconfig([cfg])
         self.assertEqual(files, [cfg, pad])
         self.assertEqual(sorted(racfg.free("l2", files, log=lambda *a: None)), ["hold_fast_forward", "rewind"])
-        self.assertIn('input_rewind_btn = "nul"', open(cfg).read())
-        self.assertIn('input_save_state_btn = "1"', open(cfg).read())          # other hotkeys kept
-        self.assertIn('input_l2_btn = "6"', open(pad).read())                   # the pad mapping kept
+        self.assertIn('input_rewind_btn = "nul"', text(cfg))
+        self.assertIn('input_save_state_btn = "1"', text(cfg))          # other hotkeys kept
+        self.assertIn('input_l2_btn = "6"', text(pad))                   # the pad mapping kept
         racfg.restore(files)
-        self.assertIn('input_rewind_btn = "6"', open(cfg).read())
-        self.assertIn('input_hold_fast_forward_btn = "6"', open(pad).read())
+        self.assertIn('input_rewind_btn = "6"', text(cfg))
+        self.assertIn('input_hold_fast_forward_btn = "6"', text(pad))
 
     def test_banner_uses_the_game_font(self):
         from urusai import banner
         from urusai.font import Font
-        font = Font.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "font", "gen1_jp.json"))
+        font = Font.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "font", "gb_jp.json"))
         self.assertEqual(banner.layout("あげ"), [("あ", None), ("け", "゛")])
         px = banner.render(font, "よみあげ オフ")
         ink = sum(p == banner.INK for row in px for p in row)

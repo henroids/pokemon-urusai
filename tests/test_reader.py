@@ -70,7 +70,7 @@ class RealFrames(unittest.TestCase):
 
     def test_committed_font_matches_labels(self):
         from urusai.font import Font
-        committed = Font.load(os.path.join(ROOT, "font", "gen1_jp.json"))
+        committed = Font.load(os.path.join(ROOT, "font", "gb_jp.json"))
         self.assertEqual(committed.table, self.font.table, "run tools/build_font.py")
 
     def test_every_frame_reads_as_expected(self):
@@ -78,6 +78,24 @@ class RealFrames(unittest.TestCase):
         for name, want in build_font.EXPECT.items():
             with self.subTest(frame=name):
                 self.assertEqual(got[name], want)
+
+    def test_letters_from_the_pixel_fonts(self):
+        """Letters no screenshot had yet (♂/♀, small ァ, 円, Gen 2's ユ) read back."""
+        import json
+        from synth import Canvas
+        from urusai.font import Font
+        font = Font.load(os.path.join(ROOT, "font", "gb_jp.json"))
+        g = {}
+        for t, lab in sorted(font.table.items()):
+            g.setdefault(lab, t)
+        with open(os.path.join(ROOT, "font", "sources", "pokemon-silver-jp-gbc.json")) as f:
+            g["ユ"] = int(json.load(f)["ユ"][-1], 16)       # the Gen 2 shape
+        cv = Canvas(g)
+        cv.box(12, 0, 17, 19)
+        cv.text(14, 1, "ニドラン♀と ファイヤー")
+        cv.text(16, 1, "ユウキに 300円！")
+        self.assertEqual(reader.analyze_image(font, cv.image()).flat(),
+                         "ニドラン♀と ファイヤー ユウキに 300円！")
 
     def test_phone_screenshot_scale_is_detected(self):
         # 7.5x stretched captures were reduced to these 160x144 frames

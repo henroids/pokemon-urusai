@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from urusai import normalize, pngdec, reader, screen  # noqa: E402
 from urusai.font import Font  # noqa: E402
 
-DEFAULT_FONT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "font", "gen1_jp.json")
+DEFAULT_FONT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "font", "gb_jp.json")
 SPLIT = {"゙": "゛", "゚": "゜"}
 
 

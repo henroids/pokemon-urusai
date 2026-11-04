@@ -12,7 +12,7 @@ counter is written in kanji (3本 さんぼん, 1個 いっこ, 6匹 ろっぴ�
 game writes counters in kana (1こ would be read いちこ). So a kana counter
 right after a number becomes its kanji, and game number formats are put
 into words: HP 15/20 -> 20のうち15, No.007 -> 7番, 9.0kg -> 9キログラム,
-×3 -> 3個, 12:34 (play time) -> 12時間34分.
+×3 -> 3個, 12:34 (play time) -> 12時間34分, ひる 12:30 (clock) -> 12時30分.
 """
 import re
 
@@ -43,6 +43,8 @@ def numbers(t):
     """Put the game's number formats into words Open JTalk reads correctly."""
     t = re.sub(r"(\d+)\s*[／/]\s*(\d+)", r"\2のうち\1", t)                # HP/PP 15/20
     t = re.sub(r"ナンバー\s*\.?\s*0*(\d+)", r"\1番", t)                   # Pokédex No.007
+    t = re.sub(r"(あさ|ひる|よる|ごぜん|ごご)\s*(\d+)\s*[:：]\s*(\d\d)(?!\d)",
+               r"\1 \2時\3分", t)                                          # Gen 2 clock: ひる 12:30
     t = re.sub(r"(\d+)\s*[:：]\s*(\d\d)(?!\d)", r"\1時間\2分", t)          # play time 12:34
     t = re.sub(r"[×xX]\s*(\d+)", r"\1個", t)                               # item count ×3
     t = re.sub(r"[¥￥]\s*(\d+)", r"\1円", t)                                # money ¥3000

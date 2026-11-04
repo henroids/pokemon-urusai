@@ -426,7 +426,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Pokémon Urusai screen-reader server")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=4404)
-    p.add_argument("--font", default=os.path.join(HERE, "font", "gen1_jp.json"))
+    p.add_argument("--font", default=os.path.join(HERE, "font", "gb_jp.json"))
     p.add_argument("--settings", default=None, help="settings file (default /roms/urusai_settings.txt)")
     p.add_argument("--capture", default=os.environ.get("URUSAI_CAPTURE_DIR"),
                    help="keep recent spoken frames + readings here (for fixing misreads)")

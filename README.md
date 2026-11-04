@@ -17,7 +17,7 @@ Everything runs on the handheld, with no internet and no PC:
 |---|---|
 | RetroArch AI Service (Speech mode, no pause) | works on the RGB20 Pro (dArkOS) |
 | Auto reading via RetroArch auto mode, L2 = say again, autostart via uinput | new in 0.4.0, needs hardware testing |
-| Gen 1 font (`font/gen1_jp.json`, 129 tiles) | all kana, marks, menus; some digits and symbols still missing |
+| Font (`font/gb_jp.json`, 160 tiles) | Gen 1 from screenshots + Red/Silver pixel fonts: all kana incl. small ァィゥェォ, digits, ♂/♀, 円, Gen 2 ユ/ロ. Gen 2 (金・銀・クリスタル) menus/boxes untested |
 | Offline voices: tohoku (dialogue), tohoku −4 semitones (menus), mei, mei_bashful, nitech | static aarch64 `open_jtalk`, no apt needed |
 | Settings file on the SD card | auto read, autostart, button, voices, volume, speed, captures |
 | Knulli (RG35XXSP) | todo |
@@ -51,7 +51,8 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 | `urusai/racfg.py` | installer helper: frees Select+L2 from RetroArch hotkeys (and restores them) |
 | `urusai/banner.py` | on-screen messages (「よみあげ オン」) drawn with the game's font |
 | `urusai/settings.py` | `urusai_settings.txt` |
-| `font/gen1_jp.json` | the font, built by `tools/build_font.py` from `tests/frames/` |
+| `font/gb_jp.json` | the font, built by `tools/build_font.py` from `tests/frames/` and `font/sources/` |
+| `font/sources/` | Red (Gen 1) and Silver (Gen 2) pixel fonts (CC BY 3.0) and their tiles (`tools/otf_tiles.py`) |
 | `tests/frames/` | 36 reference frames (160×144) from 青, with expected readings |
 | `install/darkos/` | installer, systemd unit, uninstaller |
 
@@ -75,7 +76,7 @@ For a permanent fix:
 
 ```sh
 python3 -m unittest discover -s tests   # needs open_jtalk + naist-jdic on the PC (apt install open-jtalk open-jtalk-mecab-naist-jdic)
-tools/build_font.py                      # rebuild font/gen1_jp.json and check all 36 frames
+tools/build_font.py                      # rebuild font/gb_jp.json and check all 36 frames
 tools/make_release.sh                    # dist/PokemonUrusai-<ver>.zip, including the dictionary
 ```
 
