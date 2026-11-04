@@ -76,7 +76,7 @@ class App:
         self.speaking_until = -1e9  # when the clip we last sent ends
         self.pending = None         # time of an unserved "say it again"
         self.announce = None        # a message of our own to say (and show) next, e.g. 「よみあげ オフ」
-        self.muted = False          # L1+R1 or double tap: the reader is off
+        self.muted = False          # Select+L2 or double tap: the reader is off
         self.cutting = False        # a hotkey-made request is coming to stop the speech
         self.last_cut = -1e9
         self.can_interrupt = False  # set when the virtual keyboard works
@@ -124,7 +124,7 @@ class App:
             return not self.stream_alive()
 
     def toggle(self):
-        """L1+R1 or double tap: the reader off/on, said and shown on screen.
+        """Select+L2 or double tap: the reader off/on, said and shown on screen.
         Returns "start" if the stream must be started, "cut" if speech is
         playing and must stop for the message, else None."""
         with self.lock:
@@ -464,13 +464,17 @@ def main(argv=None):
             settings.reload()
             return settings["button"]
 
+        def combo():  # in the watcher thread: don't block it
+            taps.cancel()           # L2 went down first: it wasn't "say it again"
+            threading.Thread(target=toggle, daemon=True).start()
+
         def current_combo():
             return settings["toggle_combo"]
 
         taps = Taps(say_again, toggle)
         watcher = ButtonWatcher(current_button, taps.press, game_input,
                                 get_combo=current_combo,
-                                on_combo=lambda: threading.Thread(target=toggle, daemon=True).start())
+                                on_combo=combo)
         starter.watcher = watcher
         watcher.start()
         threading.Timer(4.0, write_status, (app, watcher, starter, a.port)).start()

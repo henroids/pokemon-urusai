@@ -11,7 +11,7 @@ DEFAULTS = {
     "auto_read": "on",       # read new dialogue and menu choices automatically
     "autostart": "on",       # switch the reader on by itself when a game starts
     "button": "L2",          # tap = say it again, double tap = reader off/on: L1 R1 L2 R2 L3 R3 SELECT START, or off
-    "toggle_combo": "L1+R1",  # press both together: reader off/on, shown on screen
+    "toggle_combo": "SELECT+L2",  # press both together: reader off/on, shown on screen
     "sound_cues": "on",      # sounds when a menu opens/closes and at the first/last option
     "interrupt": "on",       # stop talking when a game button is pressed
     "menu_position": "off",  # say 「2ばんめ」 after the selected option
@@ -38,7 +38,9 @@ autostart = {autostart}
 button = {button}
 
 # Press these two together to switch the reader off/on. 「よみあげ オフ／オン」
-# is said and shown on screen. Two buttons joined by +, e.g. L1+R1, or off.
+# is said and shown on screen. Two buttons joined by +, e.g. SELECT+L2, or off.
+# (With SELECT, re-run the installer after changing it: it frees the other
+# button from RetroArch's Select hotkeys.)
 toggle_combo = {toggle_combo}
 
 # Sounds when a menu opens or closes, and at the first/last option: on / off
@@ -121,7 +123,8 @@ def write_template(path, overrides=None):
 
 
 # Old defaults that were never changed by hand are moved to the new default.
-MIGRATIONS = {"menu_voice": {"nitech": "tohoku-4"}}
+MIGRATIONS = {"menu_voice": {"nitech": "tohoku-4"},
+              "toggle_combo": {"L1+R1": "SELECT+L2"}}   # L1/R1 change the shader on dArkOS
 
 
 def upgrade(path):

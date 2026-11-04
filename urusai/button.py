@@ -49,13 +49,13 @@ def button_code(name):
 
 
 def combo_codes(spec):
-    """'L1+R1' -> {0x136, 0x137}. Empty set = off."""
+    """'SELECT+L2' -> {0x13A, 0x138}. Empty set = off."""
     names = [n for n in str(spec).replace(" ", "").split("+") if n]
     if not names or names[0].upper() in ("OFF", "NONE", "NO"):
         return frozenset()
     codes = frozenset(button_code(n) for n in names)
     if len(codes) != 2:
-        raise ValueError("toggle_combo needs two different buttons, e.g. L1+R1")
+        raise ValueError("toggle_combo needs two different buttons, e.g. SELECT+L2")
     return codes
 
 
@@ -81,7 +81,7 @@ def devices_with(code, root="/sys/class/input"):
 
 class ButtonWatcher(threading.Thread):
     """Calls on_press() whenever the configured button goes down,
-    on_combo() when both buttons of the combo are down (L1+R1: reader on/off),
+    on_combo() when both buttons of the combo are down (Select+L2: reader off/on),
     and on_game_input() for any other game button (A, B, Start, D-pad…)."""
 
     def __init__(self, get_button, on_press, on_game_input=None, log=sys.stderr,
@@ -130,12 +130,14 @@ class ButtonWatcher(threading.Thread):
         """One input event from the gamepad."""
         self._track(etype, ecode, value)
         if etype == EV_KEY and ecode in self.combo:
-            if value == 1 and self.combo_armed and self.combo <= self.held:
-                self.combo_armed = False
-                self.on_combo()
-            elif value == 0 and not self.combo & self.held:
+            if value == 1 and self.combo <= self.held:
+                if self.combo_armed:
+                    self.combo_armed = False
+                    self.on_combo()
+                return                      # part of the combo, not a tap or a game press
+            if value == 0 and not self.combo & self.held:
                 self.combo_armed = True
-        elif etype == EV_KEY and ecode == self.code and value == 1:
+        if etype == EV_KEY and ecode == self.code and value == 1:
             now = time.monotonic()
             if now - self.last >= DEBOUNCE:
                 self.last = now
@@ -221,6 +223,13 @@ class Taps:
         self.on_single, self.on_double, self.window = on_single, on_double, window
         self.timer = None
         self.lock = threading.Lock()
+
+    def cancel(self):
+        """Forget a press that turned out to be part of a combo."""
+        with self.lock:
+            if self.timer is not None:
+                self.timer.cancel()
+                self.timer = None
 
     def press(self):
         with self.lock:

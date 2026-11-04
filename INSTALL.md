@@ -1,6 +1,6 @@
 # Installing Pokémon Urusai on the RGB20 Pro (dArkOS)
 
-**The text is read aloud automatically** as it appears: dialogue, and menu choices as the cursor moves. **Tap L2** to hear it again; press **L1+R1** together (or double-tap L2) to switch the reader off or on. The game keeps running while it talks.
+**The text is read aloud automatically** as it appears: dialogue, and menu choices as the cursor moves. **Tap L2** to hear it again; press **Select + L2** (or double-tap L2) to switch the reader off or on. The game keeps running while it talks.
 
 The install takes about 10 minutes, once. After that, the reader starts by itself every time the handheld boots. It needs no Wi-Fi and no PC.
 
@@ -53,7 +53,7 @@ The installer does the following:
 | A big grid (name entry) | just the selected letter |
 | You press any game button (A, B, Start, D-pad) while it's talking | it **stops at once**, whatever it was saying. If the screen stays the same it stays quiet; when something new appears, only the new part is read. |
 | **Tap L2** | the whole screen again, once (e.g. the Pokédex page or a full menu) |
-| **L1+R1** together (or **double-tap L2**) | The reader off/on. 「よみあげ オフ」 / 「よみあげ オン」 is said and shown in a box on screen. While it's off it says nothing and presses no keys. |
+| **Select + L2** (or **double-tap L2**) | The reader off/on. 「よみあげ オフ」 / 「よみあげ オン」 is said and shown in a box on screen. While it's off it says nothing and presses no keys. |
 
 If nothing is read after starting a game, press **L2** once (or **Select + Y**). **Select + Y** also switches the reader off and on.
 
@@ -66,7 +66,7 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `auto_read` | `on` | Read new text and menu choices automatically. `off` = only when you press the button. |
 | `autostart` | `on` | Switch the reader on by itself when a game starts |
 | `button` | `L2` | Tap = say it again, double tap = reader off/on: `L1 R1 L2 R2 L3 R3 SELECT START`, or `off` |
-| `toggle_combo` | `L1+R1` | Press both together to switch the reader off/on (said and shown on screen), or `off` |
+| `toggle_combo` | `SELECT+L2` | Press both together to switch the reader off/on (said and shown on screen), or `off`. The installer turns off any RetroArch hotkey on Select + L2 (and puts it back on uninstall). |
 | `sound_cues` | `on` | Sounds when a menu opens or closes and at the first/last option (the selection sounds are always on) |
 | `menu_position` | `off` | Say the position after the selected option, e.g. 「2ばんめ」 |
 | `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy`, `mei_bashful` (female) or `nitech` (male). Add `+N`/`-N` to shift it up or down N semitones, e.g. `mei+3`. |

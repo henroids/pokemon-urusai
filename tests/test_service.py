@@ -538,26 +538,44 @@ class Narration(unittest.TestCase):
 
     def test_combo_toggles_once_per_press(self):
         from urusai import button
-        fired = []
-        game = []
-        w = button.ButtonWatcher(lambda: "L2", lambda: None, lambda: game.append(1), log=io.StringIO(),
-                                 on_combo=lambda: fired.append(1))
-        w.combo = button.combo_codes("L1+R1")
-        L1, R1 = 0x136, 0x137
-        for code, value in ((L1, 1), (R1, 1), (R1, 0), (R1, 1), (L1, 0), (R1, 0)):  # one go, a wobble
-            w.event(button.EV_KEY, code, value)
-        self.assertEqual(fired, [1])
-        for code, value in ((R1, 1), (L1, 1)):                                     # again, other order
-            w.event(button.EV_KEY, code, value)
-        self.assertEqual(fired, [1, 1])
-        w.event(button.EV_KEY, L1, 0)
-        w.event(button.EV_KEY, R1, 0)
-        w.event(button.EV_KEY, L1, 1)                                               # L1 alone: nothing
-        self.assertEqual((fired, game), ([1, 1], []))                               # and no speech cut
-        self.assertEqual(button.combo_codes("L1+R1"), {0x136, 0x137})
+        fired, taps, game = [], [], []
+        w = button.ButtonWatcher(lambda: "L2", lambda: taps.append(1), lambda: game.append(1),
+                                 log=io.StringIO(), on_combo=lambda: fired.append(1))
+        w.code, w.combo = 0x138, button.combo_codes("SELECT+L2")
+        SEL, L2 = 0x13A, 0x138
         self.assertEqual(button.combo_codes("off"), set())
         with self.assertRaises(ValueError):
             button.combo_codes("L1")
+        ev = lambda code, value: w.event(button.EV_KEY, code, value)
+        ev(L2, 1); ev(L2, 0)                                   # L2 alone: say it again
+        self.assertEqual((taps, fired), ([1], []))
+        ev(SEL, 1); ev(L2, 1); ev(L2, 0); ev(L2, 1)            # Select+L2, L2 wobbles: once
+        self.assertEqual((taps, fired), ([1], [1]))
+        ev(L2, 0); ev(SEL, 0)
+        ev(L2, 1); ev(SEL, 1)                                  # other order: toggles too
+        self.assertEqual(fired, [1, 1])
+        self.assertEqual(game, [])                             # never cuts speech as a game press
+
+    def test_installer_frees_l2_from_retroarch_hotkeys(self):
+        from urusai import racfg
+        d = tempfile.mkdtemp()
+        cfg = os.path.join(d, "retroarch.cfg")
+        auto = os.path.join(d, "autoconfig", "udev")
+        os.makedirs(auto)
+        pad = os.path.join(auto, "pad.cfg")
+        with open(cfg, "w") as f:
+            f.write('input_enable_hotkey_btn = "8"\ninput_rewind_btn = "6"\ninput_save_state_btn = "1"\n')
+        with open(pad, "w") as f:
+            f.write('input_l2_btn = "6"\ninput_player1_l2_btn = "6"\ninput_hold_fast_forward_btn = "6"\n')
+        files = racfg.with_autoconfig([cfg])
+        self.assertEqual(files, [cfg, pad])
+        self.assertEqual(sorted(racfg.free("l2", files, log=lambda *a: None)), ["hold_fast_forward", "rewind"])
+        self.assertIn('input_rewind_btn = "nul"', open(cfg).read())
+        self.assertIn('input_save_state_btn = "1"', open(cfg).read())          # other hotkeys kept
+        self.assertIn('input_l2_btn = "6"', open(pad).read())                   # the pad mapping kept
+        racfg.restore(files)
+        self.assertIn('input_rewind_btn = "6"', open(cfg).read())
+        self.assertIn('input_hold_fast_forward_btn = "6"', open(pad).read())
 
     def test_banner_uses_the_game_font(self):
         from urusai import banner

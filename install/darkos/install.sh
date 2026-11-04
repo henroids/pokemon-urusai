@@ -82,9 +82,13 @@ for cfg in "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroa
 done
 [ "$found" = 1 ] || say "  (no retroarch.cfg found — set AI Service by hand, see README)"
 
+# Select + L2 switches the reader off/on: make sure RetroArch has no hotkey there too.
+(cd "$DEST" && python3 -m urusai.racfg free "$SETTINGS" \
+  "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroarch32/retroarch.cfg") 2>&1 | while read -r l; do say "$l"; done
+
 say ""
 say "Done! Start a game: the text is read automatically."
-say "L2 = say it again.  Select + Y = switch the reader on/off."
+say "L2 = say it again.  Select + L2 = reader off/on."
 say "Settings (volume, voice, button): $SETTINGS"
 say "(log: $LOG)"
 sleep 6

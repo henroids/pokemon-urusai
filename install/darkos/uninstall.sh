@@ -11,5 +11,8 @@ for cfg in "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroa
     if [ -n "$old" ]; then sed -i "s#^$k *=.*#$old#" "$cfg"; else sed -i "/^$k *=/d" "$cfg"; fi
   done
 done
+# Put back RetroArch hotkeys that were moved off L2 for the reader's Select + L2.
+(cd /opt/urusai 2>/dev/null && python3 -m urusai.racfg restore \
+  "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroarch32/retroarch.cfg")
 rm -rf /opt/urusai
 echo "Pokemon Urusai removed (/roms/urusai_captures and /roms/urusai_settings.txt were kept)."
