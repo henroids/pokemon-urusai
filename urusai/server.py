@@ -66,6 +66,7 @@ class App:
         self.font_path = font_path
         self.font = Font.load(font_path)
         self.font_mtime = self._mtime()
+        self.started = datetime.datetime.now().isoformat(timespec="seconds")
         self.gba_font = gba.GbaFont.load(os.path.join(os.path.dirname(font_path), "gba_jp.json"))
         self.seen = (None, None, None)   # the last frame as sent, what it read as, its picture
         self.last_unread = -1e9
@@ -77,6 +78,8 @@ class App:
         self.lock = threading.Lock()
         self.last_arrival = -1e9    # when the last request came in
         self.last_frame = -1e9      # when the last real frame was handled
+        self.frames = 0             # frames RetroArch has sent (for STATUS.txt)
+        self.last_said = ""         # what was last said (for STATUS.txt)
         self.speaking_until = -1e9  # when the clip we last sent ends
         self.pending = None         # time of an unserved "say it again"
         self.announce = None        # a message of our own to say (and show) next, e.g. 「よみあげ オフ」
@@ -196,6 +199,7 @@ class App:
             fresh = not self.stream_alive(now)  # the stream (re)started: reply with something real
             cut, self.cutting = self.cutting, False
             self.last_frame = now
+            self.frames += 1
             reply = self._decide(reading, img, now, cut)
             if reply:
                 return reply
@@ -282,6 +286,7 @@ class App:
         return self._send_wav(self.narrator.render(chunk), img, reading.flat())
 
     def _send_wav(self, wav, img, text, overlay=None):
+        self.last_said = text
         # Measured *after* rendering: synthesis on the handheld can take a second or two.
         self.speaking_until = self.clock() + duration(wav)
         try:
@@ -393,6 +398,8 @@ class Starter:
             self.status = "no virtual keyboard (%s) - start the reader by hand once" % e
         self.started_for = set()
         self.watcher = None          # set by main: knows which buttons are held
+        self.keys = keys
+        self.presses, self.last_press = 0, None   # for STATUS.txt
 
     def _press(self, *holds, wait=RELEASE_WAIT):
         """The key pair once per hold, never together with a held game button."""
@@ -405,6 +412,8 @@ class Starter:
                     if i:
                         time.sleep(0.06)
                     self.kbd.chord(hold=hold)
+            self.presses += 1
+            self.last_press = datetime.datetime.now()
             return True
 
     def kick(self, why):
@@ -431,15 +440,74 @@ class Starter:
                     self.kick("game started")
 
 
+# Where RetroArch keeps the settings it actually runs with
+RETROARCH_CFGS = ("/userdata/system/configs/retroarch/retroarchcustom.cfg",   # Knulli (rewritten each launch)
+                  "/home/ark/.config/retroarch/retroarch.cfg", "/home/ark/.config/retroarch32/retroarch.cfg")
+STATUS_EVERY = 5      # seconds
+
+
+def retroarch_settings(path, keys):
+    """{key: value} for these keys in a retroarch.cfg ({} if unreadable)."""
+    out = {}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                k, sep, v = line.partition("=")
+                if sep and k.strip() in keys:
+                    out[k.strip()] = v.strip().strip('"')
+    except OSError:
+        pass
+    return out
+
+
+def retroarch_check(starter_keys, port, paths=RETROARCH_CFGS):
+    """Lines saying whether RetroArch has the settings the reader needs."""
+    enable_key, ai_key = (k.strip().lower() for k in starter_keys.split("+"))
+    want = {"ai_service_enable": "true", "ai_service_mode": "1",
+            "ai_service_url": "http://127.0.0.1:%d/" % port, "ai_service_pause": "false",
+            "input_enable_hotkey": enable_key, "input_ai_service": ai_key}
+    lines = []
+    for path in paths:
+        got = retroarch_settings(path, set(want) | {"audio_mute_enable"})
+        if not got:
+            continue
+        wrong = ["%s = %s (should be %s)" % (k, got.get(k, "missing"), v) for k, v in want.items()
+                 if got.get(k, "").lower() != v]
+        if got.get("audio_mute_enable", "false").lower() == "true":
+            wrong.append("audio_mute_enable = true (the game is muted)")
+        lines.append("RetroArch settings in %s: %s" % (path, "all OK" if not wrong else "PROBLEM: " + "; ".join(wrong)))
+    return lines or ["RetroArch settings: no retroarch.cfg found yet (start a game once)"]
+
+
 def write_status(app, watcher, starter, port):
-    """A breadcrumb in the captures folder so you can see the reader is running."""
+    """STATUS.txt in the captures folder: is the reader running, and is RetroArch talking to it?
+    Rewritten every few seconds, so it always shows the current state."""
     if not app.capture_dir:
         return
     try:
         os.makedirs(app.capture_dir, exist_ok=True)
         n, s = app.narrator, app.settings
-        with open(os.path.join(app.capture_dir, "STATUS.txt"), "w", encoding="utf-8") as f:
-            f.write("Pokemon Urusai %s, started %s\n" % (__version__, datetime.datetime.now().isoformat(timespec="seconds")))
+        now = app.clock()
+        tmp = os.path.join(app.capture_dir, ".STATUS.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("Pokemon Urusai %s, started %s, updated %s\n" % (
+                __version__, app.started, datetime.datetime.now().isoformat(timespec="seconds")))
+            pids = retroarch_pids()
+            f.write("RetroArch: %s\n" % ("running" if pids else "not running (start a game)"))
+            if app.frames:
+                f.write("screens received from RetroArch: %d, the last %d s ago%s\n" % (
+                    app.frames, now - app.last_frame,
+                    " (reading)" if app.stream_alive(now) else " (stopped: L2 or MENU+R1 starts it again)"))
+            else:
+                f.write("screens received from RetroArch: none yet%s\n" % (
+                    " - the AI Service hasn't started (see 'starter' and 'RetroArch settings')" if pids else ""))
+            f.write("last said: %s\n" % (app.last_said or "-"))
+            f.write("reader: %s\n" % ("OFF (Select+L2 turns it on)" if app.muted else "on"))
+            f.write("starter: %s; key presses so far: %d%s\n" % (
+                starter.status if starter else "off", starter.presses if starter else 0,
+                ", last at %s" % starter.last_press.isoformat(timespec="seconds") if starter and starter.last_press else ""))
+            for line in retroarch_check(starter.keys if starter else "f12+f10", port):
+                f.write(line + "\n")
             f.write("port %d, %d Game Boy tiles, %d GBA letter shapes, speech cache: %s\n"
                     % (port, len(app.font.table), len(app.gba_font), n.cache.dir or "memory only"))
             f.write("voices: %s (dialogue), %s %+g (menus), volume %d%%\n" % (
@@ -447,10 +515,16 @@ def write_status(app, watcher, starter, port):
                 n.menu_speaker.pitch, n.speaker.volume))
             f.write("auto read: %s, autostart: %s, interrupt: %s\n" % (s["auto_read"], s["autostart"], s["interrupt"]))
             f.write("button: %s, reader on/off: %s\n" % (watcher.status if watcher else "off", s["toggle_combo"]))
-            f.write("starter: %s\n" % (starter.status if starter else "off"))
             f.write("settings: %s\n" % s.path)
+        os.replace(tmp, os.path.join(app.capture_dir, "STATUS.txt"))
     except OSError as e:
         sys.stderr.write("urusai: cannot write status: %r\n" % e)
+
+
+def keep_status(app, watcher, starter, port):
+    while True:
+        time.sleep(STATUS_EVERY)
+        write_status(app, watcher, starter, port)
 
 
 def main(argv=None):
@@ -512,6 +586,7 @@ def main(argv=None):
         watcher.start()
         threading.Timer(4.0, write_status, (app, watcher, starter, a.port)).start()
     write_status(app, watcher, starter, a.port)
+    threading.Thread(target=keep_status, args=(app, watcher, starter, a.port), daemon=True, name="urusai-status").start()
     sys.stderr.write("urusai %s: listening on http://%s:%d (%d tiles)\n"
                      % (__version__, a.host, a.port, len(app.font.table)))
     srv.serve_forever()
