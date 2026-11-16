@@ -13,8 +13,10 @@
 set -u
 SRC="$(cd "$(dirname "$0")/../.." && pwd)"
 DEST=/userdata/system/urusai
-CONF=/userdata/system/batocera.conf
 SERVICE=/userdata/system/services/urusai
+REPORT=/userdata/roms/urusai_system_report.txt
+. "$SRC/install/knulli/system.sh"
+CONF="$(find_conf)"
 CAPTURE_DIR="${URUSAI_CAPTURE_DIR:-/userdata/roms/urusai_captures}"
 SETTINGS="${URUSAI_SETTINGS:-/userdata/roms/urusai_settings.txt}"
 LOG="${URUSAI_LOG:-/userdata/roms/urusai_install.log}"
@@ -34,7 +36,8 @@ speak() {
 popup() { curl -s -m 3 -X POST http://127.0.0.1:1234/messagebox -d "$1" >/dev/null 2>&1; }
 # die "what went wrong" "the same, short, to say out loud"
 die() {
-  say "ERROR: $1"; say "Please send $LOG"
+  say "ERROR: $1"; say "Please send $LOG and $REPORT"
+  system_report "$REPORT"
   popup "$(printf 'Pokemon Urusai: install FAILED\n\n%s\n\nDetails: roms/urusai_install.log' "$1")"
   speak "インストール できませんでした。${2:-}"; exit 1
 }
@@ -75,14 +78,15 @@ rm -f /tmp/urusai_test.wav
 
 say "RetroArch settings (in $CONF) ..."
 if [ ! -f "$CONF" ]; then
-  # Knulli makes batocera.conf on first boot, or when a setting is first saved; it
-  # can be missing. Start it from Knulli's own default, as that first boot would.
-  say "  ($CONF didn't exist yet: creating it from Knulli's default)"
-  cp /usr/share/batocera/datainit/system/batocera.conf "$CONF" 2>/dev/null || : > "$CONF" \
+  say "  ($CONF didn't exist yet: creating it)"
+  cp "/usr/share/batocera/datainit/system/$(basename "$CONF")" "$CONF" 2>/dev/null || : > "$CONF" \
     || die "can't create $CONF" "せっていファイルが つくれません"
 fi
 [ -f "$CONF.urusai-backup" ] || cp "$CONF" "$CONF.urusai-backup"
-sed -i "/^$MARK/d; /^global\.retroarch\.ai_service_/d; /^global\.retroarch\.input_ai_service=/d; /^global\.retroarch\.audio_mute_enable=/d" "$CONF"
+# Take the reader's lines out of every settings file (an earlier install may have used another one).
+for f in /userdata/system/*.conf; do
+  [ -f "$f" ] && sed -i "/^$MARK/d; /^global\.retroarch\.ai_service_/d; /^global\.retroarch\.input_ai_service=/d; /^global\.retroarch\.audio_mute_enable=/d" "$f"
+done
 cat >> "$CONF" <<EOF
 $MARK: reads the screen aloud through RetroArch's AI Service. Remove with the uninstaller.
 global.retroarch.ai_service_enable=true
@@ -130,10 +134,16 @@ esac
 EOF
 chmod +x "$SERVICE"
 mkdir -p /userdata/system/logs
-if command -v batocera-services >/dev/null; then
-  batocera-services enable urusai >> "$LOG" 2>&1 || say "  (couldn't enable it: turn on 'urusai' in System settings → Services)"
+TOOL="$(find_services_tool)"
+if [ -n "$TOOL" ] && "$TOOL" enable urusai >> "$LOG" 2>&1; then
+  say "  switched on with $TOOL"
 else
-  say "  (no batocera-services: turn on 'urusai' in System settings → Services)"
+  # No service tool here: start it from custom.sh, which the system runs at boot.
+  CUSTOM=/userdata/system/custom.sh
+  [ -f "$CUSTOM" ] || printf '#!/bin/bash\n' > "$CUSTOM"
+  grep -q "services/urusai" "$CUSTOM" || echo "$SERVICE \"\${1:-start}\"   # Pokemon Urusai" >> "$CUSTOM"
+  chmod +x "$CUSTOM"
+  say "  no service tool found: added to $CUSTOM instead"
 fi
 "$SERVICE" start >> "$LOG" 2>&1
 
@@ -144,6 +154,7 @@ exec bash $DEST/uninstall.sh
 EOF
 
 sleep 4
+system_report "$REPORT"
 if curl -s -m 3 http://127.0.0.1:4404/ >/dev/null 2>&1 || [ "$("$SERVICE" status)" = running ]; then
   say ""
   say "Done! Start a Game Boy or GBA game: the text is read automatically."
