@@ -73,16 +73,18 @@ if [ ! -f "$CONF" ]; then
     || die "can't create $CONF" "せっていファイルが つくれません"
 fi
 [ -f "$CONF.urusai-backup" ] || cp "$CONF" "$CONF.urusai-backup"
-sed -i "/^$MARK/d; /^global\.retroarch\.ai_service_/d; /^global\.retroarch\.input_ai_service=/d" "$CONF"
+sed -i "/^$MARK/d; /^global\.retroarch\.ai_service_/d; /^global\.retroarch\.input_ai_service=/d; /^global\.retroarch\.audio_mute_enable=/d" "$CONF"
 cat >> "$CONF" <<EOF
 $MARK: reads the screen aloud through RetroArch's AI Service. Remove with the uninstaller.
 global.retroarch.ai_service_enable=true
 global.retroarch.ai_service_mode=1
 global.retroarch.ai_service_url=http://127.0.0.1:4404/
 global.retroarch.ai_service_pause=false
-global.retroarch.input_ai_service=f9
+global.retroarch.input_ai_service=f10
+global.retroarch.audio_mute_enable=false
 EOF
-# (Knulli's hotkey-enable key is always Shift, so the reader presses Shift+F9.
+# (Knulli's hotkey-enable key is always Shift, so the reader presses Shift+F10. Not F9:
+#  that's RetroArch's mute key, which 0.10.0 used. audio_mute_enable undoes a stuck mute.
 #  By hand: Hotkey + R1 starts/stops it, Knulli's own AI Service hotkey.)
 
 say "Start-up service ..."
@@ -102,7 +104,7 @@ case "\$1" in
       mkdir -p /tmp/urusai-bin && cp "\$BIN" /tmp/urusai-bin/ && chmod +x /tmp/urusai-bin/* && BIN=/tmp/urusai-bin/open_jtalk-aarch64
     fi
     cd "\$DEST" || exit 1
-    URUSAI_OPEN_JTALK="\$BIN" nohup nice -n 5 python3 -m urusai.server --port 4404 --keys shift+f9 \\
+    URUSAI_OPEN_JTALK="\$BIN" nohup nice -n 5 python3 -m urusai.server --port 4404 --keys shift+f10 \\
       --capture $CAPTURE_DIR --settings $SETTINGS --cache "\$DEST/cache" >> /userdata/system/logs/urusai.log 2>&1 &
     echo \$! > "\$PID"
     ;;
