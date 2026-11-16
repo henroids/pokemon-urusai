@@ -45,13 +45,8 @@ done
 [ -x "$SERVICE" ] && "$SERVICE" stop >> "$LOG" 2>&1
 
 say "Copying files to $DEST ..."
-<<<<<<< HEAD
-mkdir -p "$DEST" || die "can't create $DEST"
-for d in urusai bin dic voice font; do   # (neural/: below, it keeps the downloaded voice)
-=======
 mkdir -p "$DEST" || die "can't create $DEST" "フォルダが つくれません"
-for d in urusai bin dic voice font; do
->>>>>>> main
+for d in urusai bin dic voice font; do   # (neural/: below, it keeps the downloaded voice)
   rm -rf "${DEST:?}/$d"
   cp -r "$SRC/$d" "$DEST/" || die "copy of $d failed (SD card full?)" "コピー できません。カードが いっぱい かも"
 done
