@@ -255,6 +255,16 @@ class Buttons(unittest.TestCase):
         self.assertEqual((pressed, game), ([1], [1]))  # MENU is neither L2 nor a game button
 
 
+class SettingsUpgrade(unittest.TestCase):
+    def test_old_default_volume_moves_up_a_chosen_one_stays(self):
+        for old, new in (("200", "220"), ("150", "150")):
+            path = os.path.join(tempfile.mkdtemp(), "urusai_settings.txt")
+            with open(path, "w") as f:
+                f.write("volume = %s\n" % old)
+            settings.upgrade(path)
+            self.assertEqual(settings.Settings(path)["volume"], int(new))
+
+
 class RetroArchCheck(unittest.TestCase):
     """STATUS.txt says whether RetroArch got the settings the reader needs."""
 

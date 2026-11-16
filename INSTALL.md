@@ -74,7 +74,7 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy`, `mei_bashful` (female) or `nitech` (male). Add `+N`/`-N` to shift it up or down N semitones, e.g. `mei+3`. |
 | `menu_voice` | `tohoku-4` | Voice for menu options (Tohoku, 4 semitones lower) |
 | `interrupt` | `on` | Stop talking whenever you press a game button |
-| `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
+| `volume` | `220` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
 | `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |

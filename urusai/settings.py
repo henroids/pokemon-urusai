@@ -17,7 +17,7 @@ DEFAULTS = {
     "menu_position": "off",  # say 「2ばんめ」 after the selected option
     "voice": "tohoku",       # dialogue voice, a file in voice/: tohoku, tohoku_happy, mei, mei_happy, nitech
     "menu_voice": "tohoku-4",  # voice for menu options (a voice name, optionally +/- semitones)
-    "volume": 200,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
+    "volume": 220,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
     "speed": 0.95,           # 1.0 = normal speaking speed
     "option_pause": 300,     # milliseconds of silence between menu options / choices
     "captures_keep": 50,     # newest spoken screens kept in urusai_captures (0 = don't save any)
@@ -130,7 +130,8 @@ def write_template(path, overrides=None):
 
 # Old defaults that were never changed by hand are moved to the new default.
 MIGRATIONS = {"menu_voice": {"nitech": "tohoku-4"},
-              "toggle_combo": {"L1+R1": "SELECT+L2"}}   # L1/R1 change the shader on dArkOS
+              "toggle_combo": {"L1+R1": "SELECT+L2"},   # L1/R1 change the shader on dArkOS
+              "volume": {200: 220}}                     # 10% louder (Henry, 2026-11-17)
 
 
 def upgrade(path):
