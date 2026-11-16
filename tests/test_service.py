@@ -255,6 +255,33 @@ class Buttons(unittest.TestCase):
         self.assertEqual((pressed, game), ([1], [1]))  # MENU is neither L2 nor a game button
 
 
+class RetroArchCheck(unittest.TestCase):
+    """STATUS.txt says whether RetroArch got the settings the reader needs."""
+
+    def cfg(self, text):
+        path = os.path.join(tempfile.mkdtemp(), "retroarchcustom.cfg")
+        with open(path, "w") as f:
+            f.write(text)
+        return path
+
+    def test_all_ok(self):
+        p = self.cfg('ai_service_enable = "true"\nai_service_mode = "1"\nai_service_url = "http://127.0.0.1:4404/"\n'
+                     'ai_service_pause = "false"\ninput_enable_hotkey = "shift"\ninput_ai_service = "f10"\n')
+        self.assertEqual(server.retroarch_check("shift+f10", 4404, [p, "/nonexistent"]),
+                         ["RetroArch settings in %s: all OK" % p])
+
+    def test_problems_are_named(self):
+        p = self.cfg('ai_service_enable = "false"\nai_service_mode = "0"\ninput_enable_hotkey = "shift"\n'
+                     'input_ai_service = "f9"\naudio_mute_enable = "true"\n')
+        line, = server.retroarch_check("shift+f10", 4404, [p])
+        for bit in ("ai_service_enable = false (should be true)", "ai_service_mode = 0 (should be 1)",
+                    "ai_service_url = missing", "input_ai_service = f9 (should be f10)", "the game is muted"):
+            self.assertIn(bit, line)
+
+    def test_no_config_yet(self):
+        self.assertIn("no retroarch.cfg found", server.retroarch_check("f12+f10", 4404, ["/nonexistent"])[0])
+
+
 class FakeClock:
     def __init__(self):
         self.t = 1000.0
@@ -770,7 +797,7 @@ class Narration(unittest.TestCase):
         self.assertTrue(w.wait_released(0.01))
 
     def test_hotkey_never_pressed_with_a_held_button(self):
-        """F8 is hotkey enable: with A held RetroArch would see Select+A (pause)."""
+        """The first key is hotkey enable: with A held RetroArch would see Select+A (pause)."""
         import contextlib
         from urusai import server
         events = []
@@ -799,6 +826,7 @@ class Narration(unittest.TestCase):
         self.app = App()
         st.app, st.log, st.kbd, st.lock = self.app, io.StringIO(), Kbd(), __import__("threading").Lock()
         st.watcher = Watcher()
+        st.presses, st.last_press = 0, None
         st.interrupt()                                    # A still held after 1 s: no keys at all
         self.assertEqual(events, [("wait", server.Starter.RELEASE_WAIT)])
         self.assertFalse(self.app.cutting)

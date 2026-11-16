@@ -22,16 +22,25 @@ MARK="# Pokemon Urusai (screen reader)"
 : > "$LOG" 2>/dev/null || LOG=/tmp/urusai_install.log
 
 say() { echo "$*"; echo "$*" >> "$LOG"; }
-# Ports show no text, so the installer also says how it went, out loud.
+# Knulli runs Ports with the screen blank, so the installer talks instead, and leaves a
+# message box in the menu (EmulationStation's own API) that shows once you're back there.
 speak() {
-  local w=/tmp/urusai_say.wav
-  "$DEST/bin/open_jtalk-aarch64" -x "$DEST/dic" -m "$DEST/voice/tohoku.htsvoice" -ow "$w" <<< "$1" >/dev/null 2>&1 \
+  wait   # (let the "starting" message finish first)
+  local w=/tmp/urusai_say.wav bin="$SRC/bin/open_jtalk-aarch64"
+  [ -x "$bin" ] || { cp "$bin" /tmp/urusai_oj 2>/dev/null && chmod +x /tmp/urusai_oj && bin=/tmp/urusai_oj; }
+  "$bin" -x "$SRC/dic" -m "$SRC/voice/tohoku.htsvoice" -ow "$w" <<< "$1" >/dev/null 2>&1 \
     && aplay -q "$w" >/dev/null 2>&1; rm -f "$w"
 }
+popup() { curl -s -m 3 -X POST http://127.0.0.1:1234/messagebox -d "$1" >/dev/null 2>&1; }
 # die "what went wrong" "the same, short, to say out loud"
-die() { say "ERROR: $1"; say "Please send $LOG"; speak "インストール できませんでした。${2:-}"; exit 1; }
+die() {
+  say "ERROR: $1"; say "Please send $LOG"
+  popup "$(printf 'Pokemon Urusai: install FAILED\n\n%s\n\nDetails: roms/urusai_install.log' "$1")"
+  speak "インストール できませんでした。${2:-}"; exit 1
+}
 
 say "=== Pokemon Urusai installer for Knulli ($(date)) ==="
+speak "インストール しています。すこし まってね。" &
 say "source: $SRC"
 [ "$(id -u)" -eq 0 ] || die "run this as root (Knulli's Ports and SSH already are)" "かんりしゃ では ありません"
 [ -d /userdata/system ] || die "this doesn't look like Knulli (no /userdata/system)" "ニュリ では ありません"
@@ -152,6 +161,12 @@ if curl -s -m 3 http://127.0.0.1:4404/ >/dev/null 2>&1 || [ "$("$SERVICE" status
   say "Done! Start a Game Boy or GBA game: the text is read automatically."
   say "L2 = say it again.  Select + L2 = reader off/on.  Hotkey + R1 = start/stop by hand."
   say "Settings: $SETTINGS   Status: $CAPTURE_DIR/STATUS.txt"
+  case "$NATURAL_VOICE" in
+    ready) VOICE_LINE="Natural voice: ready" ;;
+    none)  VOICE_LINE="" ;;
+    *)     VOICE_LINE="Natural voice: not installed (needs Wi-Fi during install); the standard voice is used" ;;
+  esac
+  popup "$(printf 'Pokemon Urusai: installed\n\nStart a Game Boy or GBA game: the text is read aloud.\nL2 = say it again\nSelect + L2 = reader off/on\n%s' "$VOICE_LINE")"
   case "$NATURAL_VOICE" in
     ready) speak "インストール できました。ゲームを はじめてね。" ;;
     *)     speak "インストール できました。でも、しぜんな こえは まだ ありません。" ;;
