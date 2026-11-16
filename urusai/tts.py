@@ -10,6 +10,7 @@ from . import audio, normalize
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOICE_DIR = os.path.join(HERE, "voice")
+SCRATCH = "/dev/shm" if os.path.isdir("/dev/shm") else None   # in memory, never the SD card
 SYNTH_GAIN_DB = -3.0     # synthesise with headroom; audio.louder() levels and boosts
 
 
@@ -79,7 +80,7 @@ class Speaker:
         return audio.louder(raw, self.volume, level=True)  # every voice equally loud
 
     def _synth(self, text, analyse):
-        fd, out = tempfile.mkstemp(suffix=".wav")
+        fd, out = tempfile.mkstemp(suffix=".wav", dir=SCRATCH)
         os.close(fd)
         trace = out[:-4] + ".trace"
         try:

@@ -5,12 +5,6 @@ GB_W, GB_H = 160, 144
 COLS, ROWS = GB_W // 8, GB_H // 8
 
 
-def is_gba(img):
-    """A Game Boy Advance frame (240x160 or a whole multiple): not ours to read yet."""
-    k = img.width // 240
-    return k >= 1 and (img.width, img.height) == (240 * k, 160 * k)
-
-
 def to_gb_frame(img):
     """Return a 160x144 Image from whatever RetroArch / a phone sent."""
     if (img.width, img.height) == (GB_W, GB_H):
@@ -57,35 +51,40 @@ def _block_error(img, s):
     return err
 
 
-def ink_mask(img):
-    """Per-pixel 'is text ink' (the darkest shade) as a list of rows of 0/1."""
-    lum = [[(r * 299 + g * 587 + b * 114) // 1000 for r, g, b in
-            (row[i:i + 3] for i in range(0, len(row), 3))] for row in img.rows]
-    lo = min(min(r) for r in lum)
-    hi = max(max(r) for r in lum)
+# Luminance = 0.299 R + 0.587 G + 0.114 B, one lookup table per channel, so a
+# whole row is weighed with three C-speed translate() calls and two additions.
+_LUM = [bytes(v * w // 1000 for v in range(256)) for w in (299, 587, 114)]
+
+
+def ink_rows(img):
+    """Each row as an int with one bit per pixel (leftmost pixel = highest bit):
+    1 where the pixel is text ink, the darkest of the screen's four shades."""
+    lum = []
+    for row in img.rows:
+        r, g, b = (int.from_bytes(row[c::3].translate(_LUM[c]), "big") for c in range(3))
+        lum.append((r + g + b).to_bytes(img.width, "big"))
+    lo = min(map(min, lum))
+    hi = max(map(max, lum))
     if hi - lo < 32:
-        return [[0] * img.width for _ in range(img.height)]
-    thr = lo + (hi - lo) // 6  # only the darkest of the 4 shades counts as ink
-    return [[1 if v <= thr else 0 for v in r] for r in lum]
+        return [0] * img.height
+    thr = lo + (hi - lo) // 6
+    as_digits = bytes(49 if v <= thr else 48 for v in range(256))   # "1" / "0"
+    return [int(line.translate(as_digits), 2) for line in lum]
 
 
-def tiles(img, dx=0, dy=0):
+def tiles(img):
     """Grid[row][col] -> 64-bit int (bit 63 = top-left pixel)."""
-    m = ink_mask(img)
+    rows = ink_rows(img)
     grid = []
     for ty in range(ROWS):
-        row = []
-        for tx in range(COLS):
+        band = rows[ty * 8:ty * 8 + 8]
+        line = []
+        for shift in range(img.width - 8, -8, -8):
             v = 0
-            for y in range(8):
-                py = ty * 8 + y + dy
-                line = m[py] if 0 <= py < img.height else None
-                for x in range(8):
-                    px = tx * 8 + x + dx
-                    bit = line[px] if line is not None and 0 <= px < img.width else 0
-                    v = (v << 1) | bit
-            row.append(v)
-        grid.append(row)
+            for bits in band:
+                v = (v << 8) | ((bits >> shift) & 0xFF)
+            line.append(v)
+        grid.append(line)
     return grid
 
 

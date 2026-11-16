@@ -12,4 +12,6 @@
 
 The voices' original copyright notices are in `voice/COPYRIGHT/`.
 
-No game data, audio or text from Pokémon is included. The tile font table is built from the user's own screen captures and the two FontStructions above (each kept with its own licence and readme).
+No game data, audio or text from Pokémon is included. The Game Boy tile table is built from the user's own screen captures and the two FontStructions above (each kept with its own licence and readme).
+
+`font/gba_jp.json` holds no letter pictures: for each letter of the GBA games' fonts it stores a one-way fingerprint (hash) of its ink plus its position in the cell, which is enough to recognise text on screen but not to draw it. `tools/build_gba_font.py` computes these from the font sheets in the pret decompilation projects (pokeemerald, pokefirered, pokeruby), which are not part of this repository. `tests/gba/*.png` are made-up test screens drawn by `tools/gba_synth.py`.

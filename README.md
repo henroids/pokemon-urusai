@@ -20,6 +20,7 @@ Everything runs on the handheld, with no internet and no PC:
 | Font (`font/gb_jp.json`, 160 tiles) | Gen 1 from screenshots + Red/Silver pixel fonts: all kana incl. small ァィゥェォ, digits, ♂/♀, 円, Gen 2 ユ/ロ. Gen 2 (金・銀・クリスタル) menus/boxes untested |
 | Offline voices: tohoku (dialogue), tohoku −4 semitones (menus), mei, mei_bashful, nitech | static aarch64 `open_jtalk`, no apt needed |
 | Settings file on the SD card | auto read, autostart, button, voices, volume, speed, captures |
+| GBA: ルビー・サファイア・エメラルド・ファイアレッド・リーフグリーン (`urusai/gba.py`, `font/gba_jp.json`) | **new in 0.9.0, only tested on made-up screens** (`tests/gba`): letters are found anywhere on screen by their ink, in all the games' fonts. Menus/battle layouts need real captures to confirm |
 | Knulli (RG35XXSP) | todo |
 
 ## What it reads
@@ -33,7 +34,9 @@ Everything runs on the handheld, with no internet and no PC:
 - Text is read in one flow (no pauses at the game's word spaces). The spaces are still used to check particles: a は/へ ending a phrase must sound "wa"/"e", and if Open JTalk misreads one (e.g. かれは as 枯れ葉 "kareha") it's corrected and re-spoken.
 - All voices are levelled to the same loudness; `menu_position = on` adds 「2ばんめ」 after the selection.
 
-Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're added.
+Game Boy: a missing symbol (×) is simply skipped until it's added. GBA games go through the same rules; while `gba_learn = on`, screens where nothing could be read are kept in `urusai_captures` so gaps can be fixed.
+
+**Speed** (0.9.0): a screen that hasn't changed isn't decoded or read again; PNG decoding, tile extraction and loudness levelling work on whole rows/clips with C-speed calls instead of per-pixel/per-sample Python loops (a Game Boy frame: 14 → 4 ms on a PC; levelling a 4 s clip: 140 → 15 ms).
 
 ## Layout
 
@@ -44,6 +47,8 @@ Missing symbols (some digits, ♂/♀, ×) are simply skipped until they're adde
 | `urusai/sounds.py` | sound cues (pip, open/close, tok) and audio helpers |
 | `urusai/vkbd.py` | virtual keyboard (uinput) that presses the AI Service hotkey |
 | `urusai/reader.py` | tiles → `Reading` (dialogue lines, menu options + selection, other text) |
+| `urusai/gba.py` | GBA screens → the same `Reading`: finds letters by their ink anywhere on screen |
+| `font/gba_jp.json` | fingerprints of the GBA fonts' letters (`tools/build_gba_font.py`; test screens: `tools/gba_synth.py`) |
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |
 | `urusai/font.py` | tile → label table |
 | `urusai/tts.py`, `audio.py`, `normalize.py` | Open JTalk, loudness, text clean-up for speech |

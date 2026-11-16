@@ -5,10 +5,10 @@ next reply comes in, so a message is a transparent PNG with a white box in
 the middle, the way the game draws its own text boxes. Stdlib only.
 """
 import unicodedata
+from functools import lru_cache
 
 from . import pngdec
 
-GB_W, GB_H = 160, 144
 SCALE = 4                       # sharp at full screen even if RetroArch filters it
 INK, PAPER = (24, 24, 24, 255), (248, 248, 248, 255)
 CLEAR = (0, 0, 0, 0)
@@ -32,14 +32,14 @@ def layout(text):
     return cells
 
 
-def render(font, text):
-    """A GB-sized RGBA canvas (rows of tuples) with the message box centred."""
+def render(font, text, width=160, height=144):
+    """An RGBA canvas the size of the game's screen (rows of tuples) with the message box centred."""
     g = glyphs(font)
     cells = layout(text)
     # in tiles: border, mark row, letter row, border; one tile of border left/right
     w, h = (len(cells) + 2) * 8, 4 * 8
-    x0, y0 = (GB_W - w) // 2, (GB_H - h) // 2
-    px = [[CLEAR] * GB_W for _ in range(GB_H)]
+    x0, y0 = (width - w) // 2, (height - h) // 2
+    px = [[CLEAR] * width for _ in range(height)]
     for y in range(y0, y0 + h):
         for x in range(x0, x0 + w):
             edge = min(x - x0, y - y0, x0 + w - 1 - x, y0 + h - 1 - y)
@@ -60,10 +60,15 @@ def render(font, text):
     return px
 
 
-def png(font, text, scale=SCALE):
-    """The message as RGBA PNG bytes."""
+@lru_cache(maxsize=8)
+def _png(font, text, width, height):
     rows = []
-    for row in render(font, text):
-        line = b"".join(bytes(p) * scale for p in row)
-        rows += [line] * scale
-    return pngdec.encode_rows(GB_W * scale, GB_H * scale, rows, 6)
+    for row in render(font, text, width, height):
+        line = b"".join(bytes(p) * SCALE for p in row)
+        rows += [line] * SCALE
+    return pngdec.encode_rows(width * SCALE, height * SCALE, rows, 6)
+
+
+def png(font, text, width=160, height=144):
+    """The message as RGBA PNG bytes, for a screen of this size (made once per message)."""
+    return _png(font, text, width, height)

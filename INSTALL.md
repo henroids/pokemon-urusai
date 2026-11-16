@@ -76,6 +76,7 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
 | `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |
+| `gba_learn` | `on` | GBA games: also keep a screen now and then when nothing could be read (see "GBA games") |
 
 **Numbers:** counters are read the Japanese way (1こ いっこ, 3びき さんびき, 8ほん はっぽん, 6かい ろっかい), HP/PP 15/20 as 「20のうち15」, Pokédex No.007 as 「7ばん」, 9.0kg as 「9キログラム」, ×3 as 「3こ」, play time 12:34 as 「12じかん34ぷん」.
 
@@ -84,6 +85,12 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 **About captures:** each time something is read, the screen and the text are saved. Only the newest `captures_keep` are kept and older ones are deleted automatically, so the folder can't fill up: 50 captures is about 100 KB. They're only useful for fixing misreads. Set it to `0` if you don't need them.
 
 If the voice is still hard to hear, you can also lower the game's own volume. Open the RetroArch menu (**Select + X**), go to *Settings → Audio → Volume*, then *Main Menu → Configuration File → Save Current Configuration*.
+
+## GBA games (new, experimental)
+
+ルビー・サファイア・エメラルド・ファイアレッド・リーフグリーン (Japanese) are read the same way as the Game Boy games: messages, menus with the ▶ cursor, L2 to hear the screen again. This part has only been tested on made-up screens so far, so expect gaps.
+
+To help fix them: just play. While `gba_learn = on` (the default), the reader also keeps a screen every 10 seconds or so when it couldn't read anything, next to the normal captures in `urusai_captures` (same limit, so the folder can't grow). Send that folder and the gaps can be closed. Set `gba_learn = off` once it reads well.
 
 ## If it doesn't talk
 

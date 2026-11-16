@@ -11,7 +11,7 @@ import wave
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from synth import Canvas, dialogue_canvas, font_from, make_font  # noqa: E402
-from urusai import audio, button, pngdec, screen, server, settings  # noqa: E402
+from urusai import audio, button, gba, pngdec, server, settings  # noqa: E402
 from urusai.tts import VOICE_DIR, Speaker  # noqa: E402
 
 
@@ -260,6 +260,9 @@ def yes_no(g, row):
     return cv
 
 
+GBA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gba")
+
+
 class Streaming(unittest.TestCase):
     """Drive the server the way RetroArch's auto mode does, with a fake clock.
     Synthesis is made to take 3 s, like on the handheld."""
@@ -294,7 +297,7 @@ class Streaming(unittest.TestCase):
         self.clock.t += settle
         before = len(self.rendered)
         body = json.dumps({"image": base64.b64encode(pngdec.encode(canvas.image())).decode()}).encode()
-        resp = self.app.handle(body, {"output": ["sound,wav"]})
+        resp = self.app.handle(body)
         self.assertEqual(resp.get("auto"), "auto")  # the stream must never stop
         if "sound" in resp:
             self.clock.t += (len(base64.b64decode(resp["sound"])) - 44) / 96000 + 0.1
@@ -386,7 +389,7 @@ class Streaming(unittest.TestCase):
         self.frame(Canvas(self.g))
         self.assertIsNone(self.app.toggle())
         resp = self.app.handle(json.dumps({"image": base64.b64encode(
-            pngdec.encode(Canvas(self.g).image())).decode()}).encode(), {})
+            pngdec.encode(Canvas(self.g).image())).decode()}).encode())
         self.assertEqual(self.rendered[-1], [("menu", "よみあげ オフ")])
         self.assertEqual(base64.b64decode(resp["image"])[1:4], b"PNG")   # shown on screen…
         self.assertGreaterEqual((len(base64.b64decode(resp["sound"])) - 44) / 96000, 1.5)  # …1.5 s+
@@ -401,11 +404,40 @@ class Streaming(unittest.TestCase):
         self.assertEqual(self.frame(dialogue_canvas(self.g)), [("menu", "よみあげ オン")])
         self.assertIsNotNone(self.frame(dialogue_canvas(self.g), settle=1.0))  # reads again
 
-    def test_gba_frames_are_left_alone(self):
-        img = pngdec.Image(240, 160, [bytes(240 * 3)] * 160)
-        body = json.dumps({"image": base64.b64encode(pngdec.encode(img)).decode()}).encode()
-        self.assertEqual(self.app.handle(body, {}), {"auto": "auto"})
-        self.assertFalse(screen.is_gba(dialogue_canvas(self.g).image()))
+    def test_an_unchanged_screen_is_not_read_again(self):
+        reads = []
+        real = server.reader.analyze
+        server.reader.analyze = lambda labels: reads.append(1) or real(labels)
+        try:
+            for _ in range(3):
+                self.frame(dialogue_canvas(self.g), settle=0.2)
+            self.frame(Canvas(self.g), settle=0.2)
+        finally:
+            server.reader.analyze = real
+        self.assertEqual(len(reads), 2)
+
+    def gba_frame(self, name, settle=0.0):
+        self.clock.t += settle
+        before = len(self.rendered)
+        with open(os.path.join(GBA, name + ".png"), "rb") as f:
+            body = json.dumps({"image": base64.b64encode(f.read()).decode()}).encode()
+        resp = self.app.handle(body)
+        if "sound" in resp:
+            self.clock.t += (len(base64.b64decode(resp["sound"])) - 44) / 96000 + 0.1
+            return self.rendered[-1] if len(self.rendered) > before else "cut"
+        return None
+
+    def test_gba_message_and_menu_are_read(self):
+        """A GBA game goes through the same reading rules as a Game Boy one."""
+        self.app.gba_font = gba.GbaFont.load(os.path.join(os.path.dirname(GBA), "..", "font", "gba_jp.json"))
+        self.assertIsNone(self.gba_frame("map_only"))
+        self.assertEqual(self.gba_frame("em_message"),         # ▼ shown: read at once, as one clip
+                         [("talk", "オダマキ『おーい！ まって くれー！"), ("talk", "そこは あぶないぞ！")])
+        self.assertIsNone(self.gba_frame("em_message"))          # not again
+        said = [self.gba_frame("em_yes_no", settle=0.3) for _ in range(4)]
+        self.assertEqual([c for c in said if c], [
+            [("talk", "ここまでの かつやくを"), ("talk", "レポートに かきこみますか？")],
+            [("cue", "open"), ("menu", "はい")], [("gap",), ("menu", "いいえ")]])
 
     def test_turning_off_cuts_speech(self):
         self.frame(dialogue_canvas(self.g))
@@ -474,10 +506,10 @@ class Streaming(unittest.TestCase):
 
     def test_stray_second_loop_is_ended(self):
         body = json.dumps({"image": base64.b64encode(pngdec.encode(Canvas(self.g).image())).decode()}).encode()
-        self.app.handle(body, {})
+        self.app.handle(body)
         self.clock.t += 1
         self.app.last_arrival = self.clock.t
-        self.assertEqual(self.app.handle(body, {}), {"error": "No text found."})  # no "auto"
+        self.assertEqual(self.app.handle(body), {"error": "No text found."})  # no "auto"
 
     # -- misc --
     def test_position_setting(self):
@@ -488,8 +520,8 @@ class Streaming(unittest.TestCase):
 
     def test_fresh_stream_on_empty_screen_is_valid_for_retroarch(self):
         body = json.dumps({"image": base64.b64encode(pngdec.encode(Canvas(self.g).image())).decode()}).encode()
-        self.assertEqual(self.app.handle(body, {}), {"error": "No text found.", "auto": "auto"})
-        self.assertEqual(self.app.handle(body, {}), {"auto": "auto"})
+        self.assertEqual(self.app.handle(body), {"error": "No text found.", "auto": "auto"})
+        self.assertEqual(self.app.handle(body), {"auto": "auto"})
 
     def test_stopped_stream_needs_the_hotkey(self):
         self.assertTrue(self.app.press())

@@ -21,6 +21,7 @@ DEFAULTS = {
     "speed": 0.95,           # 1.0 = normal speaking speed
     "option_pause": 300,     # milliseconds of silence between menu options / choices
     "captures_keep": 50,     # newest spoken screens kept in urusai_captures (0 = don't save any)
+    "gba_learn": "on",       # GBA games: also keep a screen now and then when nothing could be read
 }
 
 TEMPLATE = """\
@@ -70,6 +71,11 @@ option_pause = {option_pause}
 # How many recently read screens to keep in urusai_captures (each is ~2 KB).
 # They're only for fixing misreads; the oldest are deleted. 0 = don't save any.
 captures_keep = {captures_keep}
+
+# GBA games are new: while this is on, a screen where nothing could be read is
+# kept in urusai_captures every 10 seconds or so (within the limit above), so
+# missing letters and menus can be added. Switch it off once GBA reads well.
+gba_learn = {gba_learn}
 """
 
 

@@ -97,6 +97,76 @@ class RealFrames(unittest.TestCase):
         self.assertEqual(reader.analyze_image(font, cv.image()).flat(),
                          "ニドラン♀と ファイヤー ユウキに 300円！")
 
+    def test_png_decoder_handles_every_filter_and_format(self):
+        """RetroArch picks any of PNG's five row filters; phones send RGBA or palettes."""
+        import struct
+        import zlib
+        from urusai import pngdec
+        import random
+        rnd = random.Random(7)
+        w, h = 37, 9
+        rows = [bytes(rnd.randrange(256) for _ in range(w * 3)) for _ in range(h)]
+
+        def filtered(rows, bpp, kinds):
+            out, prev = bytearray(), bytes(len(rows[0]))
+            for r, kind in zip(rows, kinds):
+                line = bytearray()
+                for i, v in enumerate(r):
+                    a = r[i - bpp] if i >= bpp else 0
+                    b, c = prev[i], prev[i - bpp] if i >= bpp else 0
+                    pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                    paeth = a if pa <= pb and pa <= pc else b if pb <= pc else c
+                    line.append((v - (0, a, b, (a + b) >> 1, paeth)[kind]) & 255)
+                out += bytes([kind]) + line
+                prev = r
+            return bytes(out)
+
+        def png(raw, ctype, extra=b""):
+            def chunk(kind, body):
+                return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+            return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, ctype, 0, 0, 0))
+                    + extra + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+        for kinds in ([k] * h for k in range(5)):
+            self.assertEqual(pngdec.decode(png(filtered(rows, 3, kinds), 2)).rows, rows, kinds[0])
+        mixed = [rnd.randrange(5) for _ in range(h)]
+        self.assertEqual(pngdec.decode(png(filtered(rows, 3, mixed), 2)).rows, rows)
+        rgba = [b"".join(r[i:i + 3] + b"\x80" for i in range(0, w * 3, 3)) for r in rows]
+        self.assertEqual(pngdec.decode(png(filtered(rgba, 4, mixed), 6)).rows, rows)
+        idx = [bytes(rnd.randrange(4) for _ in range(w)) for _ in range(h)]
+        pal = bytes(range(10, 22))
+        plte = struct.pack(">I", 12) + b"PLTE" + pal + struct.pack(">I", zlib.crc32(b"PLTE" + pal))
+        self.assertEqual(pngdec.decode(png(filtered(idx, 1, mixed), 3, plte)).rows,
+                         [b"".join(pal[v * 3:v * 3 + 3] for v in r) for r in idx])
+        self.assertEqual(pngdec.decode(pngdec.encode(pngdec.Image(w, h, rows), level=1)).rows, rows)
+
+    def test_gba_screens(self):
+        """Made-up GBA screens in the games' real fonts (tools/gba_synth.py)."""
+        import json
+        from urusai import gba, pngdec
+        font = gba.GbaFont.load(os.path.join(ROOT, "font", "gba_jp.json"))
+        with open(os.path.join(ROOT, "tests", "gba", "expect.json"), encoding="utf-8") as f:
+            expect = json.load(f)
+        self.assertGreaterEqual(len(expect), 7)
+        for name, text in expect.items():
+            with open(os.path.join(ROOT, "tests", "gba", name + ".png"), "rb") as f:
+                img = pngdec.decode(f.read())
+            self.assertTrue(gba.is_gba(img))
+            self.assertEqual(gba.analyze(font, img).flat(), text, name)
+        r = gba.analyze(font, img.__class__(480, 320, [bytes(480 * 3)] * 320))   # 2x, blank
+        self.assertEqual(r.kind, "none")
+
+    def test_gba_menu_is_split_from_the_message(self):
+        from urusai import gba, pngdec
+        font = gba.GbaFont.load(os.path.join(ROOT, "font", "gba_jp.json"))
+        with open(os.path.join(ROOT, "tests", "gba", "em_battle.png"), "rb") as f:
+            r = gba.analyze(font, pngdec.decode(f.read()))
+        self.assertEqual((r.options, r.selected), (["たたかう", "バッグ", "ポケモン", "にげる"], 0))
+        self.assertEqual(r.dialogue, ["ミズゴロウは", "どうする？"])     # white on dark, another window
+        with open(os.path.join(ROOT, "tests", "gba", "fr_bag.png"), "rb") as f:
+            r = gba.analyze(font, pngdec.decode(f.read()))
+        self.assertEqual(r.options, ["キズぐすり ×3", "モンスターボール ×10", "やめる"])
+
     def test_phone_screenshot_scale_is_detected(self):
         # 7.5x stretched captures were reduced to these 160x144 frames
         with open(os.path.join(FRAMES, "36.png"), "rb") as f:

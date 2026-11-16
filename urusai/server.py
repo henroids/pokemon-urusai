@@ -34,9 +34,8 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
 
-from . import __version__, banner, pngdec, reader, screen
+from . import __version__, banner, gba, pngdec, reader, screen
 from .button import ButtonWatcher, Taps
 from .font import Font
 from .settings import Settings
@@ -54,9 +53,10 @@ SPEECH_MARGIN = 1.5    # RetroArch asks again a little after our speech has play
 BOX_GONE = 0.3         # message box absent this long = the next box is a new one
 DUPLICATE = 0.06       # two requests closer than this: the second is a stray loop
 INTERRUPT_MIN_LEFT = 0.3  # don't bother stopping speech that's about to end
+CUT_SPACING = 0.3      # …or twice in a row
 CUT = to_wav(silence(120))  # replaces (stops) the clip that's playing
 CUT_TIMEOUT = 1.5      # a stop request whose hotkey never arrived is given up
-GBA_POLL = 1.0         # seconds between frames of a GBA game (nothing is read there yet)
+UNREAD_EVERY = 10.0    # gba_learn: keep a GBA screen with nothing read this often, at most
 MESSAGE_SECONDS = 1.5   # 「よみあげ オン／オフ」 stays on screen at least this long
 
 
@@ -66,6 +66,9 @@ class App:
         self.font_path = font_path
         self.font = Font.load(font_path)
         self.font_mtime = self._mtime()
+        self.gba_font = gba.GbaFont.load(os.path.join(os.path.dirname(font_path), "gba_jp.json"))
+        self.seen = (None, None, None)   # the last frame as sent, what it read as, its picture
+        self.last_unread = -1e9
         self.settings = settings
         self.narrator = Narrator(speaker or Speaker(), menu_speaker or Speaker(), cache_dir=cache_dir)
         self._apply_settings()
@@ -108,6 +111,7 @@ class App:
         m = self._mtime()
         if m != self.font_mtime:
             self.font, self.font_mtime = Font.load(self.font_path), m
+            self.seen = (None, None, None)
         if self.settings.reload():
             self._apply_settings()
 
@@ -150,7 +154,7 @@ class App:
             if self.cutting and now - self.last_cut > CUT_TIMEOUT:
                 self.cutting = False  # the hotkey never arrived
             if (self.muted or not self.can_interrupt or self.settings["interrupt"] != "on" or self.cutting
-                    or now > self.speaking_until - INTERRUPT_MIN_LEFT or now - self.last_cut < 0.3):
+                    or now > self.speaking_until - INTERRUPT_MIN_LEFT or now - self.last_cut < CUT_SPACING):
                 return False
             self.cutting, self.last_cut = True, now
             self.queue.clear()
@@ -162,7 +166,20 @@ class App:
             self.cutting = False
 
     # ---- one frame from RetroArch ------------------------------------------
-    def handle(self, body, query):
+    def read(self, picture):
+        """(Reading, image to keep) of a frame as RetroArch sent it (base64 PNG).
+        A screen that hasn't changed since the last frame isn't read again."""
+        if picture != self.seen[0]:
+            img = pngdec.decode(base64.b64decode(picture))
+            if gba.is_gba(img):
+                reading = gba.analyze(self.gba_font, img)
+            else:
+                img = screen.to_gb_frame(img)
+                reading = reader.analyze(reader.label_grid(self.font, screen.tiles(img)))
+            self.seen = (picture, reading, img)
+        return self.seen[1:]
+
+    def handle(self, body):
         arrival = self.clock()
         with self.lock:
             if self.cutting and arrival - self.last_cut > CUT_TIMEOUT:
@@ -171,19 +188,15 @@ class App:
                 self.last_arrival = arrival
                 return {"error": NO_TEXT}  # a stray second loop: no "auto" ends it
             self.last_arrival = arrival
-        req = json.loads(body.decode("utf-8"))
-        raw = pngdec.decode(base64.b64decode(req["image"]))
-        if screen.is_gba(raw):       # GBA games aren't supported yet: stay quiet, check rarely
-            self.sleep(GBA_POLL)
-            return {"auto": "auto"}
-        img = screen.to_gb_frame(raw)
+        picture = json.loads(body)["image"]
         with self.lock:
+            self.refresh()
+            reading, img = self.read(picture)
             now = self.clock()
             fresh = not self.stream_alive(now)  # the stream (re)started: reply with something real
             cut, self.cutting = self.cutting, False
             self.last_frame = now
-            self.refresh()
-            reply = self._decide(img, now, cut)
+            reply = self._decide(reading, img, now, cut)
             if reply:
                 return reply
             if cut:
@@ -192,9 +205,8 @@ class App:
         self.sleep(POLL)  # pace the stream while nothing is said (also keeps real requests apart)
         return {"error": NO_TEXT, "auto": "auto"} if fresh else {"auto": "auto"}
 
-    def _decide(self, img, now, cut):
+    def _decide(self, reading, img, now, cut):
         n = self.narrator
-        reading = reader.analyze_image(self.font, img)
         sig = (reading.flat(), tuple(reading.options), reading.selected, tuple(reading.other))
         if sig != self.sig:
             self.sig, self.stable_since = sig, now
@@ -212,9 +224,11 @@ class App:
         if self.announce:
             text, self.announce = self.announce, None
             return self._send_wav(pad_to(n.say(text, "menu"), MESSAGE_SECONDS), img, text,
-                                  overlay=banner.png(self.font, text))
+                                  overlay=banner.png(self.font, text, img.width, img.height))
         if self.muted:
             return None           # the reader is off
+        if reading.kind == "none" and img.width != screen.GB_W:
+            self.keep_unread(img, now)
 
         ready = {"menu": stable >= STABLE_MENU, "dialogue": True,
                  "other": stable >= STABLE_MENU, "none": stable >= BOX_GONE}[reading.kind]
@@ -225,7 +239,7 @@ class App:
             self.spoken_sig = sig
             return self._start(n.plan(reading, repeat=True), reading, img, sig)
         # 4. automatic reading
-        auto = self.settings["auto_read"] == "on" and not self.muted
+        auto = self.settings["auto_read"] == "on"
         if self.hold is not None:
             if sig == self.hold:
                 return None       # the press stopped this screen: stay quiet
@@ -279,6 +293,16 @@ class App:
             reply["image"] = base64.b64encode(overlay).decode("ascii")
         return reply
 
+    def keep_unread(self, img, now):
+        """gba_learn: now and then keep a GBA screen nothing was read on, so
+        letters or layouts the reader doesn't know yet can be added from it."""
+        if self.settings["gba_learn"] == "on" and now - self.last_unread >= UNREAD_EVERY:
+            self.last_unread = now
+            try:
+                self.capture(img, "(nothing read)")
+            except OSError:
+                pass
+
     def capture(self, img, text):
         """Keep the newest N spoken frames (+ what was read); oldest are deleted."""
         keep = self.settings["captures_keep"]
@@ -287,7 +311,7 @@ class App:
         os.makedirs(self.capture_dir, exist_ok=True)
         base = os.path.join(self.capture_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
         with open(base + ".png", "wb") as f:
-            f.write(pngdec.encode(img))
+            f.write(pngdec.encode(img, level=1))
         with open(base + ".txt", "w", encoding="utf-8") as f:
             f.write(text + "\n")
         shots = sorted(x[:-4] for x in os.listdir(self.capture_dir) if x.endswith(".png"))
@@ -318,7 +342,7 @@ def make_handler(app):
         def do_POST(self):
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             try:
-                resp = app.handle(body, parse_qs(urlparse(self.path).query))
+                resp = app.handle(body)
             except Exception as e:  # never break the stream on one bad frame
                 sys.stderr.write("urusai: %r\n" % e)
                 resp = {"error": "Urusai: %s" % e, "auto": "auto"}
@@ -415,7 +439,8 @@ def write_status(app, watcher, starter, port):
         n, s = app.narrator, app.settings
         with open(os.path.join(app.capture_dir, "STATUS.txt"), "w", encoding="utf-8") as f:
             f.write("Pokemon Urusai %s, started %s\n" % (__version__, datetime.datetime.now().isoformat(timespec="seconds")))
-            f.write("port %d, %d font tiles, speech cache: %s\n" % (port, len(app.font.table), n.cache.dir or "memory only"))
+            f.write("port %d, %d Game Boy tiles, %d GBA letter shapes, speech cache: %s\n"
+                    % (port, len(app.font.table), len(app.gba_font), n.cache.dir or "memory only"))
             f.write("voices: %s (dialogue), %s %+g (menus), volume %d%%\n" % (
                 os.path.basename(n.speaker.voice), os.path.basename(n.menu_speaker.voice),
                 n.menu_speaker.pitch, n.speaker.volume))
