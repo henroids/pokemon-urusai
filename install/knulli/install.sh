@@ -28,26 +28,27 @@ speak() {
   "$DEST/bin/open_jtalk-aarch64" -x "$DEST/dic" -m "$DEST/voice/tohoku.htsvoice" -ow "$w" <<< "$1" >/dev/null 2>&1 \
     && aplay -q "$w" >/dev/null 2>&1; rm -f "$w"
 }
-die() { say "ERROR: $*"; say "Please send $LOG"; speak "インストール できませんでした"; exit 1; }
+# die "what went wrong" "the same, short, to say out loud"
+die() { say "ERROR: $1"; say "Please send $LOG"; speak "インストール できませんでした。${2:-}"; exit 1; }
 
 say "=== Pokemon Urusai installer for Knulli ($(date)) ==="
 say "source: $SRC"
-[ "$(id -u)" -eq 0 ] || die "run this as root (Knulli's Ports and SSH already are)"
-[ -d /userdata/system ] || die "this doesn't look like Knulli (no /userdata/system)"
-[ "$(uname -m)" = "aarch64" ] || die "this build is for aarch64 (got $(uname -m))"
-command -v python3 >/dev/null || die "python3 not found"
+[ "$(id -u)" -eq 0 ] || die "run this as root (Knulli's Ports and SSH already are)" "かんりしゃ では ありません"
+[ -d /userdata/system ] || die "this doesn't look like Knulli (no /userdata/system)" "ニュリ では ありません"
+[ "$(uname -m)" = "aarch64" ] || die "this build is for aarch64 (got $(uname -m))" "この きかいには あいません"
+command -v python3 >/dev/null || die "python3 not found" "パイソンが ありません"
 for f in urusai/server.py bin/open_jtalk-aarch64 dic/sys.dic; do
-  [ -e "$SRC/$f" ] || die "missing $f in $SRC (use the release zip, it includes the dictionary)"
+  [ -e "$SRC/$f" ] || die "missing $f in $SRC (use the release zip, it includes the dictionary)" "ファイルが たりません"
 done
 
 # Stop an older copy first.
 [ -x "$SERVICE" ] && "$SERVICE" stop >> "$LOG" 2>&1
 
 say "Copying files to $DEST ..."
-mkdir -p "$DEST" || die "can't create $DEST"
+mkdir -p "$DEST" || die "can't create $DEST" "フォルダが つくれません"
 for d in urusai bin dic voice font; do
   rm -rf "${DEST:?}/$d"
-  cp -r "$SRC/$d" "$DEST/" || die "copy of $d failed (SD card full?)"
+  cp -r "$SRC/$d" "$DEST/" || die "copy of $d failed (SD card full?)" "コピー できません。カードが いっぱい かも"
 done
 cp "$SRC/install/knulli/uninstall.sh" "$DEST/" && chmod +x "$DEST/uninstall.sh"
 chmod +x "$DEST/bin/"* 2>/dev/null
@@ -58,13 +59,19 @@ if ! echo "テスト" | "$DEST/bin/open_jtalk-aarch64" -x "$DEST/dic" -m "$DEST/
   say "  (the voice program can't run from the SD card: the service will run it from memory)"
 fi
 rm -f /tmp/urusai_test.wav
-(cd "$DEST" && python3 -c "import urusai.server" >> "$LOG" 2>&1) || die "python3 is missing a module the reader needs (see $LOG)"
+(cd "$DEST" && python3 -c "import urusai.server" >> "$LOG" 2>&1) || die "python3 is missing a module the reader needs (see $LOG)" "パイソンの ぶひんが たりません"
 
 # Settings file: create it, or refresh its comments while keeping the values.
 (cd "$DEST" && python3 -m urusai.settings "$SETTINGS") >> "$LOG" 2>&1 || say "  (couldn't write $SETTINGS)"
 
 say "RetroArch settings (in $CONF) ..."
-[ -f "$CONF" ] || die "no $CONF"
+if [ ! -f "$CONF" ]; then
+  # Knulli makes batocera.conf on first boot, or when a setting is first saved; it
+  # can be missing. Start it from Knulli's own default, as that first boot would.
+  say "  ($CONF didn't exist yet: creating it from Knulli's default)"
+  cp /usr/share/batocera/datainit/system/batocera.conf "$CONF" 2>/dev/null || : > "$CONF" \
+    || die "can't create $CONF" "せっていファイルが つくれません"
+fi
 [ -f "$CONF.urusai-backup" ] || cp "$CONF" "$CONF.urusai-backup"
 sed -i "/^$MARK/d; /^global\.retroarch\.ai_service_/d; /^global\.retroarch\.input_ai_service=/d" "$CONF"
 cat >> "$CONF" <<EOF
@@ -133,5 +140,5 @@ if curl -s -m 3 http://127.0.0.1:4404/ >/dev/null 2>&1 || [ "$("$SERVICE" status
   say "Settings: $SETTINGS   Status: $CAPTURE_DIR/STATUS.txt"
   speak "インストール できました。ゲームを はじめてね。"
 else
-  die "the reader didn't start (see /userdata/system/logs/urusai.log)"
+  die "the reader didn't start (see /userdata/system/logs/urusai.log)" "よみあげが はじまりません"
 fi
