@@ -41,6 +41,7 @@ from .font import Font
 from .settings import Settings
 from .sounds import duration, pad_to, silence, to_wav
 from .speech import Narrator
+from . import tts
 from .tts import HERE, Speaker
 
 NO_TEXT = "No text found."
@@ -444,6 +445,10 @@ def write_status(app, watcher, starter, port):
             f.write("voices: %s (dialogue), %s %+g (menus), volume %d%%\n" % (
                 os.path.basename(n.speaker.voice), os.path.basename(n.menu_speaker.voice),
                 n.menu_speaker.pitch, n.speaker.volume))
+            f.write("natural voice: %s\n" % (
+                "in use, with %s for lines not made yet" % os.path.basename(n.speaker.hts) if n.speaker.neural
+                else "not installed (standard voice used)" if tts.parse_voice(s["voice"])[0] == "tsukuyomi"
+                else "not selected"))
             f.write("auto read: %s, autostart: %s, interrupt: %s\n" % (s["auto_read"], s["autostart"], s["interrupt"]))
             f.write("button: %s, reader on/off: %s\n" % (watcher.status if watcher else "off", s["toggle_combo"]))
             f.write("starter: %s\n" % (starter.status if starter else "off"))

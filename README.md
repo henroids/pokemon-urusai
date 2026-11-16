@@ -21,6 +21,7 @@ Everything runs on the handheld, with no internet and no PC:
 | Offline voices: tohoku (dialogue), tohoku −4 semitones (menus), mei, mei_bashful, nitech | static aarch64 `open_jtalk`, no apt needed |
 | Settings file on the SD card | auto read, autostart, button, voices, volume, speed, captures |
 | GBA: ルビー・サファイア・エメラルド・ファイアレッド・リーフグリーン (`urusai/gba.py`, `font/gba_jp.json`) | **new in 0.9.0, only tested on made-up screens** (`tests/gba`): letters are found anywhere on screen by their ink, in all the games' fonts. Menus/battle layouts need real captures to confirm |
+| Natural voice: piper-plus + つくよみちゃん (`urusai/neural.py`), **branch `neural-voice` only** | engine tested on a PC with another voice; the real voice and the handheld's speed are untested. A line is said in the standard voice the first time and in the natural voice from the cache afterwards |
 | Knulli (RG35XXSP) | todo |
 
 ## What it reads
@@ -47,6 +48,8 @@ Game Boy: a missing symbol (×) is simply skipped until it's added. GBA games go
 | `urusai/sounds.py` | sound cues (pip, open/close, tok) and audio helpers |
 | `urusai/vkbd.py` | virtual keyboard (uinput) that presses the AI Service hotkey |
 | `urusai/reader.py` | tiles → `Reading` (dialogue lines, menu options + selection, other text) |
+| `urusai/neural.py` | the natural voice: keeps piper-plus running, resamples its speech to 48 kHz |
+| `neural/aarch64/` | piper-plus (C++ CLI) and ONNX Runtime for the handheld; the voice model is fetched by the installer |
 | `urusai/gba.py` | GBA screens → the same `Reading`: finds letters by their ink anywhere on screen |
 | `font/gba_jp.json` | fingerprints of the GBA fonts' letters (`tools/build_gba_font.py`; test screens: `tools/gba_synth.py`) |
 | `urusai/screen.py`, `pngdec.py` | frame → 20×18 one-bit tiles (stdlib-only PNG) |

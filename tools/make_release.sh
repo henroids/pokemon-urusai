@@ -11,6 +11,9 @@ rm -rf "$STAGE"; mkdir -p "$PKG/dic"
 cp -r "$ROOT"/{urusai,tools,bin,voice,install,README.md,INSTALL.md,LICENSES.md} "$PKG/"
 mkdir -p "$PKG/font"; cp "$ROOT"/font/*.json "$PKG/font/" 2>/dev/null || true
 cp "$DIC"/* "$PKG/dic/"
+if [ -d "$ROOT/neural/aarch64" ]; then   # the natural voice's program (the voice itself is fetched on install)
+  mkdir -p "$PKG/neural"; cp -r "$ROOT/neural/aarch64" "$PKG/neural/"
+fi
 find "$PKG" -name __pycache__ -prune -exec rm -rf {} +
 cp "$ROOT/install/darkos/Install Pokemon Urusai.sh" "$STAGE/"
 (cd "$STAGE" && rm -f "$OUT/PokemonUrusai-$VER.zip" && zip -qr9 "$OUT/PokemonUrusai-$VER.zip" .)

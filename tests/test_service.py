@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 import wave
 
@@ -258,6 +259,95 @@ def yes_no(g, row):
     cv.text(9, 15, "いいえ")
     cv.put(row, 14, "<cursor>")
     return cv
+
+
+STUB_PIPER = """#!/usr/bin/env python3
+# Stands in for piper-plus: one JSON line in, one WAV (22.05 kHz, 1 s x length_scale) out.
+import array, json, math, sys, wave
+scale = float(sys.argv[sys.argv.index("--length_scale") + 1])
+for line in sys.stdin:
+    req = json.loads(line)
+    n = int(22050 * scale)
+    with wave.open(req["output_file"], "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+        w.writeframes(array.array("h", [int(8000 * math.sin(i * 0.2)) for i in range(n)]).tobytes())
+    print(req["output_file"], flush=True)
+"""
+
+
+class NaturalVoice(unittest.TestCase):
+    """The neural voice, with a stand-in for the piper-plus program."""
+
+    def setUp(self):
+        import platform
+        from urusai import neural
+        self.neural, self.old_root = neural, neural.ROOT
+        neural.ROOT = tempfile.mkdtemp()
+        exe = os.path.join(neural.ROOT, platform.machine(), "bin", "piper-plus")
+        os.makedirs(os.path.dirname(exe))
+        with open(exe, "w") as f:
+            f.write(STUB_PIPER)
+        os.chmod(exe, 0o755)
+        self.model = os.path.join(neural.ROOT, "model", "tsukuyomi-chan-6lang-fp16.onnx")
+
+    def install_model(self):
+        os.makedirs(os.path.dirname(self.model))
+        open(self.model, "w").close()
+
+    def tearDown(self):
+        for e in self.neural._engines.values():
+            e.stop()
+        self.neural._engines.clear()
+        self.neural.ROOT = self.old_root
+
+    def seconds(self, wav):
+        return (len(wav) - 44) / 96000
+
+    def test_falls_back_when_the_voice_is_not_installed(self):
+        sp = Speaker(voice="tsukuyomi")
+        self.assertIsNone(sp.neural)
+        self.assertTrue(sp.voice.endswith("tohoku.htsvoice"))
+        self.assertGreater(self.seconds(sp.wav("たたかう")), 0.3)
+
+    def test_speaks_at_the_readers_rate_and_pitch_keeps_the_length(self):
+        self.install_model()
+        sp = Speaker(voice="tsukuyomi", speed=1.0)
+        self.assertEqual(sp.neural, self.model)
+        self.assertAlmostEqual(self.seconds(sp.wav("たたかう")), 1.0, delta=0.02)      # 22.05 -> 48 kHz
+        self.assertGreater(self.seconds(sp.wav("たたかう", quick=True)), 0.3)          # Open JTalk, same speaker
+        low = Speaker(voice="tsukuyomi-4", speed=1.0)
+        self.assertAlmostEqual(self.seconds(low.wav("たたかう")), 1.0, delta=0.03)     # lower, not slower
+        self.assertEqual(len(self.neural._engines), 2)
+
+    def test_first_time_quick_voice_then_natural_from_the_cache(self):
+        from urusai.speech import Narrator
+        self.install_model()
+        n = Narrator(Speaker(voice="tsukuyomi", speed=1.0), Speaker(voice="tohoku-4"))
+        chunk = [("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた！")]
+        first = n.render(chunk)                       # nothing made yet: said at once in the quick voice
+        self.assertTrue(n.cache.has(n._key(chunk[0], quick=True)))
+        for _ in range(100):                          # …while the natural clips are made behind the scenes
+            if n._natural(chunk):
+                break
+            time.sleep(0.05)
+        self.assertTrue(n._natural(chunk))
+        again = n.render(chunk)
+        self.assertNotEqual(first, again)
+        self.assertAlmostEqual(self.seconds(again), 2.0 - 0.1, delta=0.05)   # two 1 s stub clips, joined
+        menu = [("menu", "たたかう")]                  # a standard menu voice never waits for anything
+        self.assertTrue(n._natural(menu))
+        n.render(menu)
+        self.assertTrue(n.ready(menu))
+
+    def test_resample(self):
+        import array
+        import math
+        src = array.array("h", [int(10000 * math.sin(2 * math.pi * 440 * i / 22050)) for i in range(22050)])
+        out = audio.resample(src, 22050, 48000)
+        self.assertEqual(len(out), 48000)
+        self.assertLess(max(abs(out[j] - 10000 * math.sin(2 * math.pi * 440 * j / 48000))
+                            for j in range(0, 47000, 13)), 60)
+        self.assertIs(audio.resample(src, 48000, 48000), src)
 
 
 GBA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gba")

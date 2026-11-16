@@ -69,10 +69,10 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `toggle_combo` | `SELECT+L2` | Press both together to switch the reader off/on (said and shown on screen), or `off`. The installer turns off any RetroArch hotkey on Select + L2 (and puts it back on uninstall). |
 | `sound_cues` | `on` | Sounds when a menu opens or closes and at the first/last option (the selection sounds are always on) |
 | `menu_position` | `off` | Say the position after the selected option, e.g. 「2ばんめ」 |
-| `voice` | `tohoku` | Dialogue voice: `tohoku`, `tohoku_happy`, `mei`, `mei_happy`, `mei_bashful` (female) or `nitech` (male). Add `+N`/`-N` to shift it up or down N semitones, e.g. `mei+3`. |
 | `menu_voice` | `tohoku-4` | Voice for menu options (Tohoku, 4 semitones lower) |
 | `interrupt` | `on` | Stop talking whenever you press a game button |
 | `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
+| `voice` | `tsukuyomi` | Dialogue voice: `tsukuyomi` (natural, see "Natural voice") or a standard one: `tohoku`, `tohoku_happy`, `mei`, `mei_happy`, `mei_bashful`, `nitech`. Add `+N`/`-N` semitones. |
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
 | `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |
@@ -85,6 +85,23 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 **About captures:** each time something is read, the screen and the text are saved. Only the newest `captures_keep` are kept and older ones are deleted automatically, so the folder can't fill up: 50 captures is about 100 KB. They're only useful for fixing misreads. Set it to `0` if you don't need them.
 
 If the voice is still hard to hear, you can also lower the game's own volume. Open the RetroArch menu (**Select + X**), go to *Settings → Audio → Volume*, then *Main Menu → Configuration File → Save Current Configuration*.
+
+## Natural voice (this version: experimental)
+
+Dialogue can be read in a much more natural voice, つくよみちゃん, made by [piper-plus](https://github.com/ayutaz/piper-plus). It works offline like everything else, but it is slow: making a new line takes a few seconds on the handheld. So:
+
+- the **first time** a line comes up, it is said at once in the standard voice, as before;
+- meanwhile the natural version is made in the background and saved;
+- **every time after that**, the line is said in the natural voice. Menu words, battle messages and anything else that repeats soon always sound natural.
+
+**Getting the voice (once, about 40 MB):**
+
+- Easiest: connect the handheld to Wi-Fi and run the installer. It downloads the voice by itself and says "Natural voice: ready".
+- Without Wi-Fi: on a computer, open <https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan>, download `tsukuyomi-chan-6lang-fp16.onnx` and `config.json`, put both in a folder called `tsukuyomi` on the SD card (next to your game folders), and run the installer.
+
+If the voice isn't there, the standard voice is used and nothing else changes. To switch the natural voice off, set `voice = tohoku` in the settings file. `urusai_captures/STATUS.txt` says whether it's in use.
+
+If the game stutters while a natural line is being made, tell me: it's limited to three of the four processor cores at low priority, but this hasn't been measured on the handheld yet.
 
 ## GBA games (new, experimental)
 

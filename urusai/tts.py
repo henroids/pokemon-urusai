@@ -6,10 +6,11 @@ import re
 import subprocess
 import tempfile
 
-from . import audio, normalize
+from . import audio, neural, normalize
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOICE_DIR = os.path.join(HERE, "voice")
+QUICK_VOICE = "tohoku"   # said at once while a neural voice's clip is still being made
 SCRATCH = "/dev/shm" if os.path.isdir("/dev/shm") else None   # in memory, never the SD card
 SYNTH_GAIN_DB = -3.0     # synthesise with headroom; audio.louder() levels and boosts
 
@@ -55,28 +56,36 @@ class Speaker:
         self.dic = find_dict()
         self.configure(voice, speed, volume)
         missing = [n for n, v in (("open_jtalk", self.binary), ("dictionary", self.dic),
-                                  ("voice", self.voice)) if not v]
+                                  ("voice", self.hts)) if not v]
         if missing:
             raise RuntimeError("missing: " + ", ".join(missing))
 
     def configure(self, voice, speed, volume):
         """voice may carry a pitch shift in semitones, e.g. 'mei+3' or 'tohoku-4'."""
         name, pitch = parse_voice(voice)
-        self.voice = find_voice(name)
         self.pitch = max(-12.0, min(12.0, pitch))
+        self.neural = neural.find_model(name)       # a piper-plus voice (slow, natural), if installed
+        self.hts = find_voice(QUICK_VOICE if self.neural or not os.path.exists(
+            os.path.join(VOICE_DIR, "%s.htsvoice" % name)) else name)
+        self.voice = self.neural or self.hts
         self.speed = min(2.0, max(0.5, float(speed)))
         self.volume = min(400, max(0, int(volume)))
 
-    def wav(self, text, particles=()):
+    def wav(self, text, particles=(), quick=False):
         """Speak text. particles: indices of は/へ that must sound wa/e; if Open JTalk
-        read one differently, it's spelled わ/え and synthesised again."""
-        raw, tokens = self._synth(text, analyse=bool(particles))
+        read one differently, it's spelled わ/え and synthesised again.
+        quick: use Open JTalk even if this speaker's voice is a neural one."""
+        slow = self.neural and not quick
+        raw, tokens = self._synth(text, analyse=bool(particles)) if particles or not slow else (None, [])
         wrong = misread_particles(text, tokens, particles) if particles else []
         if wrong:
             fixed = list(text)
             for i in wrong:
                 fixed[i] = {"は": "わ", "へ": "え"}[text[i]]
-            raw, _ = self._synth("".join(fixed), analyse=False)
+            text = "".join(fixed)
+            raw = None if slow else self._synth(text, analyse=False)[0]
+        if slow:   # piper-plus reads with the same dictionary, so the same respelling applies
+            raw = neural.wav(self.neural, self.dic, text, self.speed, self.pitch)
         return audio.louder(raw, self.volume, level=True)  # every voice equally loud
 
     def _synth(self, text, analyse):
@@ -84,7 +93,7 @@ class Speaker:
         os.close(fd)
         trace = out[:-4] + ".trace"
         try:
-            cmd = [self.binary, "-x", self.dic, "-m", self.voice, "-ow", out,
+            cmd = [self.binary, "-x", self.dic, "-m", self.hts, "-ow", out,
                    "-r", str(self.speed), "-g", str(SYNTH_GAIN_DB), "-fm", str(self.pitch)]
             if analyse:
                 cmd += ["-ot", trace]

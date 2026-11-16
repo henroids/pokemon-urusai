@@ -10,6 +10,9 @@
 | HTS voice "NIT ATR503 M001" (`nitech`) | `voice/` | CC BY 3.0, © Nagoya Institute of Technology |
 | FontStructions "Pokémon Red (JP) (GB)" and "Pokémon Silver (JP) (GBC)" by Patrick H. Lauke (fontstruct.com/fontstructions/show/2623292, …/2623568); their letter shapes are part of `font/gb_jp.json` | `font/sources/` | CC BY 3.0 |
 
+| piper-plus (C++ command-line build, linux-arm64) by ayutaz, with ONNX Runtime by Microsoft | `neural/aarch64/` (licences in `neural/aarch64/share/licenses/`) | MIT (both) |
+| Voice model "piper-plus-tsukuyomi-chan" by ayousanz — **not included**; the installer downloads it from huggingface.co/ayousanz/piper-plus-tsukuyomi-chan | `/opt/urusai/neural/model/` on the handheld | Its own terms (see that page). Speech made with it must be credited **「Piper Plus:つくよみちゃん」**. It is an unofficial work: the character's creator, 夢前黎, is not involved in it. |
+
 The voices' original copyright notices are in `voice/COPYRIGHT/`.
 
 No game data, audio or text from Pokémon is included. The Game Boy tile table is built from the user's own screen captures and the two FontStructions above (each kept with its own licence and readme).

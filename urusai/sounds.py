@@ -12,6 +12,14 @@ def wav_samples(wav_bytes):
         return array.array("h", w.readframes(w.getnframes()))
 
 
+def wav_samples_rate(wav_bytes):
+    """(samples, sample rate) of a 16-bit mono WAV of any rate."""
+    with wave.open(io.BytesIO(wav_bytes)) as w:
+        if w.getsampwidth() != 2 or w.getnchannels() != 1:
+            raise ValueError("expected 16-bit mono")
+        return array.array("h", w.readframes(w.getnframes())), w.getframerate()
+
+
 def to_wav(samples):
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:

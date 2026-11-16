@@ -15,6 +15,13 @@ screen moved on (cursor moved, menu closed) the rest is dropped:
 Speed (Narrator.render): every clip is cached in memory and on disk, made
 in the background as soon as text appears, and common menu words are made
 at start-up, so most speech plays at once.
+
+A neural voice (urusai/neural.py) is too slow to wait for. So each clip can
+exist twice: a quick one (Open JTalk) and a natural one. A chunk is said in
+the natural voice only if all of it is already made; otherwise in the quick
+voice, right away, while the natural version is made in the background and
+kept for the next time that text comes up. Menu words, battle lines and
+anything else that repeats therefore soon always sound natural.
 """
 import array
 import hashlib
@@ -144,9 +151,13 @@ class Narrator:
         self.pause_ms = 300    # pause between menu options (text itself flows on)
         self.cache = ClipCache(cache_dir)
         self.lock = threading.Lock()
-        self.wanted = []       # pieces to make in the background, most urgent first
-        self.wake = threading.Event()
-        threading.Thread(target=self._worker, daemon=True, name="urusai-tts").start()
+        # pieces to make in the background, most urgent first: quick clips and natural ones
+        # each have their own thread, so a slow natural clip never holds up a quick one
+        self.wanted = {True: [], False: []}
+        self.wake = {True: threading.Event(), False: threading.Event()}
+        for quick in (True, False):
+            threading.Thread(target=self._worker, args=(quick,), daemon=True,
+                             name="urusai-tts-%s" % ("quick" if quick else "natural")).start()
         self.reset()
 
     def reset(self):
@@ -232,18 +243,26 @@ class Narrator:
     def _speaker(self, kind):
         return self.menu_speaker if kind == "menu" else self.speaker
 
-    def _key(self, piece):
+    def _key(self, piece, quick=False):
+        """Cache key of a piece's clip: the natural one, or the quick one
+        (the same thing unless the speaker's voice is a neural one)."""
         sp = self._speaker(piece[0])
-        return (os.path.basename(sp.voice), sp.pitch, sp.speed, sp.volume, piece[1])
+        voice = sp.hts if quick or not sp.neural else sp.neural
+        return (os.path.basename(voice), sp.pitch, sp.speed, sp.volume, piece[1])
 
-    def _synth(self, piece):
-        key = self._key(piece)
+    def _synth(self, piece, quick=False):
+        key = self._key(piece, quick)
         samples = self.cache.get(key)
         if samples is None:
             text, particles = normalize.with_particles(piece[1])
-            samples = trim(wav_samples(self._speaker(piece[0]).wav(text, particles)))
+            samples = trim(wav_samples(self._speaker(piece[0]).wav(text, particles, quick=quick)))
             self.cache.put(key, samples)
         return samples
+
+    def _natural(self, chunk):
+        """Say this chunk in its natural voices? Only if none of it has to be waited for."""
+        return all(self.cache.has(self._key(p)) for p in chunk
+                   if p[0] in ("talk", "menu") and self._speaker(p[0]).neural)
 
     def say(self, text, kind="talk"):
         """WAV for a short message of our own (e.g. 「よみあげ オフ」)."""
@@ -252,13 +271,16 @@ class Narrator:
     def render(self, chunk):
         """WAV bytes for one chunk (uses the cache, synthesises what's missing)."""
         out = array.array("h")
+        quick = not self._natural(chunk)
+        if quick:
+            self.prepare([chunk], urgent=False)   # natural next time
         for i, piece in enumerate(chunk):
             if piece[0] == "gap":
                 out += silence(self.pause_ms - 120)  # RetroArch's own round trip adds ~0.1 s
             elif piece[0] == "cue":
                 out += silence(60) + cue(piece[1]) + silence(60)
             else:
-                samples = self._synth(piece)
+                samples = self._synth(piece, quick)
                 nxt = chunk[i + 1][0] if i + 1 < len(chunk) else None
                 prev = chunk[i - 1][0] if i else None
                 if piece[0] == "talk" and prev == "talk":
@@ -271,32 +293,39 @@ class Narrator:
         return to_wav(out)
 
     def ready(self, chunk):
-        return all(self.cache.has(self._key(p)) for p in chunk if p[0] in ("talk", "menu"))
+        """Can this chunk be said without waiting (in either voice)?"""
+        spoken = [p for p in chunk if p[0] in ("talk", "menu")]
+        return any(all(self.cache.has(self._key(p, quick)) for p in spoken) for quick in (False, True))
 
     def prepare(self, chunks, urgent=True):
-        """Make these chunks' speech in the background."""
-        todo = [p for c in chunks for p in c if p[0] in ("talk", "menu")]
-        todo = [p for p in todo if not self.cache.has(self._key(p))]
-        if not todo:
-            return
-        with self.lock:
-            rest = [p for p in self.wanted if p not in todo]
-            self.wanted = todo + rest if urgent else rest + todo
-        self.wake.set()
+        """Make these chunks' speech in the background: quick clips first, then natural ones."""
+        pieces = [p for c in chunks for p in c if p[0] in ("talk", "menu")]
+        for quick in (True, False):
+            todo = [p for p in pieces if (quick or self._speaker(p[0]).neural)
+                    and not self.cache.has(self._key(p, quick))]
+            if not todo:
+                continue
+            with self.lock:
+                rest = [p for p in self.wanted[quick] if p not in todo]
+                self.wanted[quick] = todo + rest if urgent else rest + todo
+            self.wake[quick].set()
 
     def warm_up(self, phrases=COMMON_MENU):
         """Make common menu words at start-up (lowest priority)."""
         self.prepare([[("menu", p)] for p in phrases], urgent=False)
+        if self.speaker.neural:    # loads the natural voice now, not at the first line of the game
+            self.prepare([[("talk", "よみあげ")]], urgent=False)
 
-    def _worker(self):
+    def _worker(self, quick):
+        wanted, wake = self.wanted, self.wake[quick]
         while True:
-            self.wake.wait()
+            wake.wait()
             with self.lock:
-                piece = self.wanted.pop(0) if self.wanted else None
-                if not self.wanted:
-                    self.wake.clear()
+                piece = wanted[quick].pop(0) if wanted[quick] else None
+                if not wanted[quick]:
+                    wake.clear()
             if piece is not None:
                 try:
-                    self._synth(piece)
+                    self._synth(piece, quick)
                 except Exception:
                     pass  # it'll be retried when it's actually needed

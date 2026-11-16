@@ -16,7 +16,8 @@ import math
 import sys
 import wave
 from functools import lru_cache
-from operator import mul
+from itertools import cycle, repeat
+from operator import add, mul, rshift
 
 CEILING = 29000          # about -1 dBFS
 KNEE = 16000             # linear below this
@@ -48,6 +49,25 @@ def level_gain(samples):
     if not n:
         return 1.0
     return min(MAX_GAIN, max(0.25, TARGET_RMS / math.sqrt(sum(map(mul, some, some)) / n)))
+
+
+def resample(samples, src, dst):
+    """16-bit samples at src Hz -> dst Hz, by linear interpolation.
+    The positions repeat every dst/gcd outputs, so indices and weights are laid
+    out once per period and the arithmetic runs in C-speed map() calls."""
+    if src == dst or not samples:
+        return samples
+    g = math.gcd(src, dst)
+    up, down = dst // g, src // g
+    n_out = len(samples) * up // down
+    base = [k * down // up for k in range(up)]                 # input index of each output in a period
+    w_hi = [(k * down % up) * 256 // up for k in range(up)]    # weight of the next input sample, /256
+    w_lo = [256 - w for w in w_hi]
+    lo = [b + o for o in range(0, len(samples), down) for b in base][:n_out]
+    src_pad = samples + samples[-1:]
+    get = src_pad.__getitem__
+    mixed = map(add, map(mul, map(get, lo), cycle(w_lo)), map(mul, map(get, map(add, lo, repeat(1))), cycle(w_hi)))
+    return array.array("h", map(rshift, mixed, repeat(8)))
 
 
 def louder(wav_bytes, volume_percent, level=False):

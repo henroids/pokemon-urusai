@@ -15,7 +15,7 @@ DEFAULTS = {
     "sound_cues": "on",      # sounds when a menu opens/closes and at the first/last option
     "interrupt": "on",       # stop talking when a game button is pressed
     "menu_position": "off",  # say 「2ばんめ」 after the selected option
-    "voice": "tohoku",       # dialogue voice, a file in voice/: tohoku, tohoku_happy, mei, mei_happy, nitech
+    "voice": "tsukuyomi",    # dialogue voice: tsukuyomi (natural), or a file in voice/: tohoku, mei, nitech…
     "menu_voice": "tohoku-4",  # voice for menu options (a voice name, optionally +/- semitones)
     "volume": 200,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
     "speed": 0.95,           # 1.0 = normal speaking speed
@@ -51,8 +51,13 @@ sound_cues = {sound_cues}
 # Say the position after the selected option, e.g. 「2ばんめ」: on / off
 menu_position = {menu_position}
 
-# Voices: tohoku, tohoku_happy, mei, mei_happy, mei_bashful (female), nitech (male).
+# Voices. tsukuyomi is the natural one (piper-plus). It takes a few seconds to
+# make a new line, so a line is said in the standard voice (tohoku) the first
+# time and in the natural voice whenever it comes up again. If it isn't
+# installed, tohoku is used. To go back to the old behaviour: voice = tohoku
+# Standard voices (instant): tohoku, tohoku_happy, mei, mei_happy, mei_bashful (female), nitech (male).
 # Add +N or -N to make one higher or lower in semitones, e.g. mei+3 or tohoku-4.
+# (menu_voice = tsukuyomi-4 also works, but runs a second copy of the voice: more memory.)
 voice = {voice}
 menu_voice = {menu_voice}
 
@@ -130,6 +135,7 @@ def write_template(path, overrides=None):
 
 # Old defaults that were never changed by hand are moved to the new default.
 MIGRATIONS = {"menu_voice": {"nitech": "tohoku-4"},
+              "voice": {"tohoku": "tsukuyomi"},          # the natural voice became the default
               "toggle_combo": {"L1+R1": "SELECT+L2"}}   # L1/R1 change the shader on dArkOS
 
 
