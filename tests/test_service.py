@@ -829,15 +829,15 @@ class VirtualKeys(unittest.TestCase):
                 mock.patch.object(vkbd.fcntl, "ioctl") as ioctl, \
                 mock.patch.object(vkbd.os, "write", side_effect=lambda fd, b: writes.append(b)), \
                 mock.patch.object(vkbd.time, "sleep"):
-            k = vkbd.VirtualKeyboard(vkbd.key_codes("shift+f9"))   # Knulli's pair
+            k = vkbd.VirtualKeyboard(vkbd.key_codes("shift+f10"))  # Knulli's pair
             self.assertEqual(len(writes[0]), 1116)  # struct uinput_user_dev
             ioctl.assert_any_call(99, vkbd.UI_DEV_CREATE)
             ioctl.assert_any_call(99, vkbd.UI_SET_KEYBIT, 42)
             k.chord()
         keys = [vkbd.EVENT.unpack(w)[2:] for w in writes[1:]]
         presses = [(c, v) for t, c, v in keys if t == vkbd.EV_KEY]
-        self.assertEqual(presses, [(42, 1), (67, 1), (67, 0), (42, 0)])   # Shift down, F9, up in reverse
-        self.assertEqual(vkbd.key_codes("F8+F6"), (66, 64))                # dArkOS
+        self.assertEqual(presses, [(42, 1), (68, 1), (68, 0), (42, 0)])   # Shift down, F10, up in reverse
+        self.assertEqual(vkbd.key_codes("F12+F10"), (88, 68))              # dArkOS
         with self.assertRaises(ValueError):
             vkbd.key_codes("f9")
 

@@ -2,10 +2,15 @@
 AI Service hotkey for us.
 
 RetroArch only fires hotkeys while its "hotkey enable" key is held. On
-dArkOS the installer binds hotkey-enable to F8 and AI Service to F6 on the
+dArkOS the installer binds hotkey-enable to F12 and AI Service to F10 on the
 keyboard (Select / Select+Y on the pad still work); Knulli always uses
-Shift for hotkey-enable, and its installer binds AI Service to F9. Tapping
-the pair here starts reading without anyone holding a button. Stdlib only.
+Shift for hotkey-enable, and its installer binds AI Service to F10. Tapping
+the pair here starts reading without anyone holding a button.
+
+The keys must be ones RetroArch doesn't already use: by default F9 is
+"mute", F8 "screenshot" and F6 "previous save slot" (0.10.0 used F9 on
+Knulli and muted the game). F10 and F12 are free there and on Knulli.
+Stdlib only.
 """
 import fcntl
 import os
@@ -13,17 +18,17 @@ import struct
 import time
 
 EV_SYN, EV_KEY = 0x00, 0x01
-KEYS = {"shift": 42, "f6": 64, "f8": 66, "f9": 67, "f10": 68, "f11": 87}
+KEYS = {"shift": 42, "f6": 64, "f8": 66, "f9": 67, "f10": 68, "f11": 87, "f12": 88}
 
 
 def key_codes(spec):
-    """'f8+f6' -> (66, 64): hotkey enable first, then AI Service."""
+    """'f12+f10' -> (88, 68): hotkey enable first, then AI Service."""
     try:
         codes = tuple(KEYS[k.strip().lower()] for k in spec.split("+"))
     except KeyError as e:
         raise ValueError("unknown key %s (use %s)" % (e, ", ".join(KEYS)))
     if len(codes) != 2:
-        raise ValueError("keys must be two keys joined by +, e.g. f8+f6")
+        raise ValueError("keys must be two keys joined by +, e.g. f12+f10")
     return codes
 UI_SET_EVBIT = 0x40045564
 UI_SET_KEYBIT = 0x40045565

@@ -72,10 +72,11 @@ for cfg in "$HOME_DIR/.config/retroarch/retroarch.cfg" "$HOME_DIR/.config/retroa
   set_cfg "$cfg" ai_service_mode 1
   set_cfg "$cfg" ai_service_url "http://127.0.0.1:4404/"
   set_cfg "$cfg" ai_service_pause false          # no pause; also needed for auto mode
-  # The reader presses F8+F6 on a virtual keyboard to start RetroArch's AI Service:
-  # F8 = hotkey enable (Select still works on the pad), F6 = AI Service.
-  set_cfg "$cfg" input_enable_hotkey f8
-  set_cfg "$cfg" input_ai_service f6
+  # The reader presses F12+F10 on a virtual keyboard to start RetroArch's AI Service:
+  # F12 = hotkey enable (Select still works on the pad), F10 = AI Service. Both are
+  # unused by RetroArch's defaults (0.10.0 and earlier used F8 = screenshot, F6 = save slot -).
+  set_cfg "$cfg" input_enable_hotkey f12
+  set_cfg "$cfg" input_ai_service f10
   # By hand: Select + Y starts/stops the reader.
   set_cfg "$cfg" input_ai_service_btn 3
   set_cfg "$cfg" network_cmd_enable false        # was used by v0.3.0

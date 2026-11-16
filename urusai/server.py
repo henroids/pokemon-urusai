@@ -371,7 +371,7 @@ def retroarch_pids():
 
 
 class Starter:
-    """Presses RetroArch's AI Service hotkey (F8+F6 on dArkOS, Shift+F9 on Knulli)
+    """Presses RetroArch's AI Service hotkey (F12+F10 on dArkOS, Shift+F10 on Knulli)
     through a virtual keyboard:
     to start the stream when a game starts or the button finds it stopped, and
     twice in a row to stop speech when a game button is pressed.
@@ -382,7 +382,7 @@ class Starter:
 
     RELEASE_WAIT = 1.0   # give up on a cut if a button is still held this long
 
-    def __init__(self, app, keys="f8+f6", log=sys.stderr):
+    def __init__(self, app, keys="f12+f10", log=sys.stderr):
         self.app, self.log = app, log
         self.kbd, self.status = None, "off"
         self.lock = threading.Lock()
@@ -468,8 +468,8 @@ def main(argv=None):
                    help="keep recent spoken frames + readings here (for fixing misreads)")
     p.add_argument("--cache", default=os.path.join(HERE, "cache"), help="speech cache folder ('' = memory only)")
     p.add_argument("--no-input", action="store_true", help="don't watch the gamepad or press keys")
-    p.add_argument("--keys", default="f8+f6", help="RetroArch's hotkey-enable + AI Service keys "
-                   "(dArkOS: f8+f6, as the installer sets them; Knulli: shift+f9)")
+    p.add_argument("--keys", default="f12+f10", help="RetroArch's hotkey-enable + AI Service keys "
+                   "(dArkOS: f12+f10, as the installer sets them; Knulli: shift+f10)")
     a = p.parse_args(argv)
 
     settings = Settings(a.settings)

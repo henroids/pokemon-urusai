@@ -36,7 +36,7 @@ The installer does the following:
 - sets up RetroArch:
   - AI Service on, in Speech mode, at `http://127.0.0.1:4404/`
   - **no pause**, so the game keeps going while it talks
-  - keyboard hotkeys F8 + F6 for the AI Service, which the reader presses on a virtual keyboard so nobody has to hold Select
+  - keyboard hotkeys F12 + F10 for the AI Service (keys RetroArch doesn't otherwise use), which the reader presses on a virtual keyboard so nobody has to hold Select
 - creates or refreshes `urusai_settings.txt` on the games SD card (see below). Your values are kept.
 - backs up your RetroArch settings first (`retroarch.cfg.urusai-backup`)
 - writes `urusai_install.log` to the games SD card
@@ -129,7 +129,7 @@ Any other button cuts off the speech, as on dArkOS.
 
 **Where things are:** settings in `roms/urusai_settings.txt` (the same options as above), captures and `STATUS.txt` in `roms/urusai_captures`, the install log in `roms/urusai_install.log`. The reader itself is in `/userdata/system/urusai` and starts as a Knulli service: you can see it, and switch it off, under **System Settings → Services → urusai**.
 
-**What the installer changes:** it adds six lines starting with `global.retroarch.` to `/userdata/system/batocera.conf` (Knulli rewrites RetroArch's own settings at every game start, so they have to go there), and keeps a copy of the file as `batocera.conf.urusai-backup`. If you had Knulli's own **AI Game Translation** switched on, the reader's lines take over from it.
+**What the installer changes:** it adds seven lines starting with `global.retroarch.` to `/userdata/system/batocera.conf` (Knulli rewrites RetroArch's own settings at every game start, so they have to go there), and keeps a copy of the file as `batocera.conf.urusai-backup`. If you had Knulli's own **AI Game Translation** switched on, the reader's lines take over from it.
 
 **If it doesn't work:** send `roms/urusai_install.log`, `roms/urusai_captures/STATUS.txt` and `/userdata/system/logs/urusai.log`. STATUS.txt's `button:` line says whether L2 was found; the RG35XXSP's buttons send unusual codes, so the reader reads Knulli's own button map to find them.
 
