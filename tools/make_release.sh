@@ -12,7 +12,7 @@ cp -r "$ROOT"/{urusai,tools,bin,voice,install,README.md,INSTALL.md,LICENSES.md} 
 mkdir -p "$PKG/font"; cp "$ROOT"/font/*.json "$PKG/font/" 2>/dev/null || true
 cp "$DIC"/* "$PKG/dic/"
 find "$PKG" -name __pycache__ -prune -exec rm -rf {} +
-cp "$ROOT/install/darkos/Install Pokemon Urusai.sh" "$STAGE/"
+cp "$ROOT/install/Install Pokemon Urusai.sh" "$STAGE/"
 (cd "$STAGE" && rm -f "$OUT/PokemonUrusai-$VER.zip" && zip -qr9 "$OUT/PokemonUrusai-$VER.zip" .)
 rm -rf "$STAGE"
 ls -lh "$OUT/PokemonUrusai-$VER.zip"

@@ -1,5 +1,7 @@
 # Installing Pokémon Urusai on the RGB20 Pro (dArkOS)
 
+*On an RG35XXSP or another Knulli handheld? See [Knulli](#knulli-rg35xxsp) below: same zip, different steps.*
+
 **The text is read aloud automatically** as it appears: dialogue, and menu choices as the cursor moves. **Tap L2** to hear it again; press **Select + L2** (or double-tap L2) to switch the reader off or on. The game keeps running while it talks.
 
 The install takes about 10 minutes, once. After that, the reader starts by itself every time the handheld boots. It needs no Wi-Fi and no PC.
@@ -85,6 +87,38 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 **About captures:** each time something is read, the screen and the text are saved. Only the newest `captures_keep` are kept and older ones are deleted automatically, so the folder can't fill up: 50 captures is about 100 KB. They're only useful for fixing misreads. Set it to `0` if you don't need them.
 
 If the voice is still hard to hear, you can also lower the game's own volume. Open the RetroArch menu (**Select + X**), go to *Settings → Audio → Volume*, then *Main Menu → Configuration File → Save Current Configuration*.
+
+## Knulli (RG35XXSP)
+
+New in 0.10.0 and **not yet tried on a real RG35XXSP**, so send the files listed under "If it doesn't work" if anything's off.
+
+**What you need:** the same release zip, Wi-Fi not needed. Game Boy and GBA games must run in RetroArch, which is Knulli's default for them.
+
+1. **Copy the files.** Unzip the release on your PC. Copy the `PokemonUrusai` folder **and** `Install Pokemon Urusai.sh` into the `ports` folder of the `roms` folder, the same one your `gb` folder is in.
+   - SD card in your PC: open the partition that has the `roms` folder. If your PC can't open it, use the network instead: turn on Wi-Fi on the handheld and open `\\KNULLI\share` (Windows) or `smb://knulli` (Mac), then `roms/ports`.
+2. **Show it in Ports.** On the handheld, close any game, press **Start → Game Settings → Update Gamelists**.
+3. **Run the installer.** Open **Ports → Install Pokemon Urusai**. The screen stays dark for about a minute; when it's done, the handheld says 「インストール できました」. If it says 「インストール できませんでした」 instead, see "If it doesn't work".
+4. **Play.** Start your Pokémon game. The reader starts by itself a few seconds after the game does.
+
+**Buttons on the RG35XXSP:**
+
+| Button | What it does |
+|---|---|
+| **L2** | Say it again |
+| **Select + L2** (or double-tap L2) | Reader off/on, with 「よみあげ オフ／オン」 |
+| **MENU + R1** | Knulli's own AI Service hotkey: starts or stops the reader by hand, if it hasn't started by itself |
+
+Any other button cuts off the speech, as on dArkOS.
+
+**Where things are:** settings in `roms/urusai_settings.txt` (the same options as above), captures and `STATUS.txt` in `roms/urusai_captures`, the install log in `roms/urusai_install.log`. The reader itself is in `/userdata/system/urusai` and starts as a Knulli service: you can see it, and switch it off, under **System Settings → Services → urusai**.
+
+**What the installer changes:** it adds six lines starting with `global.retroarch.` to `/userdata/system/batocera.conf` (Knulli rewrites RetroArch's own settings at every game start, so they have to go there), and keeps a copy of the file as `batocera.conf.urusai-backup`. If you had Knulli's own **AI Game Translation** switched on, the reader's lines take over from it.
+
+**If it doesn't work:** send `roms/urusai_install.log`, `roms/urusai_captures/STATUS.txt` and `/userdata/system/logs/urusai.log`. STATUS.txt's `button:` line says whether L2 was found; the RG35XXSP's buttons send unusual codes, so the reader reads Knulli's own button map to find them.
+
+**Updating:** copy the new release over the old one in `ports` and run the installer again. **Uninstalling:** **Ports → Uninstall Pokemon Urusai** (Update Gamelists first if it isn't listed).
+
+The natural voice (つくよみちゃん) isn't in the Knulli version yet.
 
 ## GBA games (new, experimental)
 

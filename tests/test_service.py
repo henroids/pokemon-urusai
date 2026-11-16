@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 import wave
 
@@ -180,39 +181,78 @@ class Buttons(unittest.TestCase):
         self.assertTrue(button.has_key(caps, 0x138))
         self.assertFalse(button.has_key(caps, 0x139))
 
+    # The RG35XXSP's buttons, as Knulli's es_input.cfg has them (abridged)
+    RG35XXSP = """<inputList>
+      <inputConfig type="joystick" deviceName="ANBERNIC-keys" deviceGUID="19000000010000000100000000010000">
+        <input name="a" type="button" id="3" value="1" code="304" />
+        <input name="hotkey" type="button" id="11" value="1" code="312" />
+        <input name="l2" type="button" id="13" value="1" code="314" />
+        <input name="pageup" type="button" id="7" value="1" code="308" />
+        <input name="select" type="button" id="9" value="1" code="310" />
+        <input name="up" type="hat" id="0" value="1" />
+      </inputConfig>
+      <inputConfig type="joystick" deviceName="Select-is-hotkey pad">
+        <input name="select" type="button" id="6" value="1" code="314" />
+        <input name="hotkey" type="button" id="6" value="1" code="314" />
+      </inputConfig>
+    </inputList>"""
+
+    def es_maps(self):
+        path = os.path.join(tempfile.mkdtemp(), "es_input.cfg")
+        with open(path, "w") as f:
+            f.write(self.RG35XXSP)
+        return button.es_pad_maps([path, "/nonexistent/es_input.cfg"])
+
+    def test_es_input_maps_each_pad_to_standard_codes(self):
+        maps = self.es_maps()
+        b = button.BUTTONS
+        self.assertEqual(maps["ANBERNIC-keys"], {304: b["A"], 312: b["MENU"], 314: b["L2"], 308: b["L1"], 310: b["SELECT"]})
+        self.assertEqual(maps["Select-is-hotkey pad"], {314: b["SELECT"]})
+
     def test_find_devices_in_fake_sysfs(self):
         root = tempfile.mkdtemp()
-        for name, has_l2 in (("event0", False), ("event3", True)):
+        for name, code, pad in (("event0", 1, "keyboard"), ("event3", 0x138, "standard pad"),
+                                ("event4", 314, "ANBERNIC-keys"), ("event5", 0x138, "ANBERNIC-keys")):
             d = os.path.join(root, name, "device", "capabilities")
             os.makedirs(d)
-            bit = (1 << (0x138 % 64)) if has_l2 else 1
             with open(os.path.join(d, "key"), "w") as f:
-                f.write("%x 0 0 0 0\n" % bit)
-        self.assertEqual(button.devices_with(0x138, root), ["/dev/input/event3"])
+                f.write("%x 0 0 0 0\n" % (1 << (code % 64)) if code >= 256 else "0 0 0 0 %x\n" % (1 << code))
+            with open(os.path.join(root, name, "device", "name"), "w") as f:
+                f.write(pad + "\n")
+        maps = self.es_maps()
+        found = button.devices_with(0x138, root, maps)       # L2
+        self.assertEqual([p for p, _ in found], ["/dev/input/event3", "/dev/input/event4"])   # event5's 0x138 is MENU
+        self.assertEqual(found[1][1][314], 0x138)
 
-
-    def test_watcher_fires_once_per_press(self):
-        """Feed fake input_event records through a pipe standing in for /dev/input/eventN."""
-        import time
+    def watch(self, events, translate=None):
+        """Feed input_event records through a pipe standing in for /dev/input/eventN."""
         fifo = os.path.join(tempfile.mkdtemp(), "event9")
         os.mkfifo(fifo)
-        pressed = []
+        pressed, game = [], []
         names = iter(["L2"] * 1000)
         orig = button.devices_with
-        button.devices_with = lambda code: [fifo]
+        button.devices_with = lambda code: [(fifo, translate or {})]
         try:
             watcher = button.ButtonWatcher(lambda: next(names, "off"), lambda: pressed.append(1),
-                                           log=io.StringIO())
+                                           lambda: game.append(1), log=io.StringIO())
             watcher.start()
             with open(fifo, "wb") as f:
-                ev = lambda code, value: button.EVENT.pack(0, 0, button.EV_KEY, code, value)
-                f.write(ev(0x130, 1) + ev(0x138, 1) + ev(0x138, 0) + ev(0x138, 1))  # A, L2 down/up, bounce
+                f.write(b"".join(button.EVENT.pack(0, 0, button.EV_KEY, c, v) for c, v in events))
                 f.flush()
                 time.sleep(0.5)
-            self.assertEqual(pressed, [1])  # other buttons ignored, bounce within 0.4 s ignored
-            self.assertIn("watching L2", watcher.status)
+            return pressed, game, watcher.status
         finally:
             button.devices_with = orig
+
+    def test_watcher_fires_once_per_press(self):
+        pressed, game, status = self.watch([(0x130, 1), (0x138, 1), (0x138, 0), (0x138, 1)])  # A, L2 down/up, bounce
+        self.assertEqual((pressed, game), ([1], [1]))  # A cuts speech; the bounce within 0.06 s is ignored
+        self.assertIn("watching L2", status)
+
+    def test_watcher_on_the_rg35xxsp(self):
+        tr = self.es_maps()["ANBERNIC-keys"]
+        pressed, game, _ = self.watch([(312, 1), (312, 0), (314, 1), (304, 1)], tr)  # MENU, L2, A
+        self.assertEqual((pressed, game), ([1], [1]))  # MENU is neither L2 nor a game button
 
 
 class FakeClock:
@@ -700,13 +740,17 @@ class VirtualKeys(unittest.TestCase):
                 mock.patch.object(vkbd.fcntl, "ioctl") as ioctl, \
                 mock.patch.object(vkbd.os, "write", side_effect=lambda fd, b: writes.append(b)), \
                 mock.patch.object(vkbd.time, "sleep"):
-            k = vkbd.VirtualKeyboard()
+            k = vkbd.VirtualKeyboard(vkbd.key_codes("shift+f9"))   # Knulli's pair
             self.assertEqual(len(writes[0]), 1116)  # struct uinput_user_dev
             ioctl.assert_any_call(99, vkbd.UI_DEV_CREATE)
+            ioctl.assert_any_call(99, vkbd.UI_SET_KEYBIT, 42)
             k.chord()
         keys = [vkbd.EVENT.unpack(w)[2:] for w in writes[1:]]
         presses = [(c, v) for t, c, v in keys if t == vkbd.EV_KEY]
-        self.assertEqual(presses, [(vkbd.KEY_F8, 1), (vkbd.KEY_F6, 1), (vkbd.KEY_F6, 0), (vkbd.KEY_F8, 0)])
+        self.assertEqual(presses, [(42, 1), (67, 1), (67, 0), (42, 0)])   # Shift down, F9, up in reverse
+        self.assertEqual(vkbd.key_codes("F8+F6"), (66, 64))                # dArkOS
+        with self.assertRaises(ValueError):
+            vkbd.key_codes("f9")
 
 
 class Bundle(unittest.TestCase):
