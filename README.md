@@ -22,7 +22,7 @@ Everything runs on the handheld, with no internet and no PC:
 | Settings file on the SD card | auto read, autostart, button, voices, volume, speed, captures |
 | GBA: ルビー・サファイア・エメラルド・ファイアレッド・リーフグリーン (`urusai/gba.py`, `font/gba_jp.json`) | **new in 0.9.0, only tested on made-up screens** (`tests/gba`): letters are found anywhere on screen by their ink, in all the games' fonts. Menus/battle layouts need real captures to confirm |
 | Natural voice: piper-plus + つくよみちゃん (`urusai/neural.py`), **branch `neural-voice` only** | engine tested on a PC with another voice; the real voice and the handheld's speed are untested. A line is said in the standard voice the first time and in the natural voice from the cache afterwards |
-| Knulli (RG35XXSP) | todo |
+| Knulli (RG35XXSP) — `install/knulli/` | **new in 0.10.0, untested on the device**: settings via `global.retroarch.*` in batocera.conf, a Knulli service, Shift+F9 (Knulli's hotkey-enable is always Shift), button codes from es_input.cfg |
 
 ## What it reads
 

@@ -8,6 +8,11 @@ It also keeps track of which buttons are held, so the virtual keyboard
 never presses hotkey-enable while the player holds one: RetroArch would
 take that as Select + the button (Select+A = pause, Select+D-pad = fast
 forward/rewind on dArkOS).
+
+Buttons are named by the standard Linux codes (BUTTONS). Some handhelds send
+others: the RG35XXSP's L2 sends the code that means "Menu" elsewhere. Where
+EmulationStation keeps a map of each gamepad's buttons (es_input.cfg, as on
+Knulli), each pad's codes are translated to the standard ones first.
 """
 import contextlib
 import fcntl
@@ -18,6 +23,7 @@ import struct
 import sys
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 EV_KEY = 0x01
 EV_ABS = 0x03
@@ -31,6 +37,12 @@ BUTTONS = {
     "L1": 0x136, "R1": 0x137, "L2": 0x138, "R2": 0x139,
     "SELECT": 0x13A, "START": 0x13B, "MENU": 0x13C, "L3": 0x13D, "R3": 0x13E,
 }
+# EmulationStation's button names -> ours. Its "hotkey" is the Menu/Function button.
+ES_NAMES = {"a": "A", "b": "B", "x": "X", "y": "Y", "pageup": "L1", "pagedown": "R1",
+            "l2": "L2", "r2": "R2", "select": "SELECT", "start": "START", "hotkey": "MENU",
+            "l3": "L3", "r3": "R3"}
+ES_INPUT = ("/userdata/system/configs/emulationstation/es_input.cfg",   # Knulli: the player's own setup
+            "/usr/share/emulationstation/es_input.cfg")                  # …and the built-in ones
 DEBOUNCE = 0.06       # contact bounce
 DOUBLE_TAP = 0.35     # second press within this = double tap
 
@@ -59,6 +71,32 @@ def combo_codes(spec):
     return codes
 
 
+def es_pad_maps(paths=ES_INPUT):
+    """{gamepad name: {its key code: standard code}} from EmulationStation's
+    es_input.cfg files (the first file that knows a pad wins). {} if there are none."""
+    maps = {}
+    for path in paths:
+        try:
+            root = ET.parse(path).getroot()
+        except (OSError, ET.ParseError):
+            continue
+        for pad in root.iter("inputConfig"):
+            name = pad.get("deviceName")
+            if pad.get("type") != "joystick" or not name or name in maps:
+                continue
+            m = {}
+            for i in pad.iter("input"):
+                ours, code = ES_NAMES.get(i.get("name")), i.get("code")
+                if i.get("type") != "button" or not ours or not (code or "").isdigit():
+                    continue
+                if ours == "MENU" and int(code) in m:
+                    continue        # a pad whose hotkey is Select: it stays Select
+                m[int(code)] = BUTTONS[ours]
+            if m:
+                maps[name] = m
+    return maps
+
+
 def has_key(caps_hex, code):
     """Test a bit in a sysfs key capability bitmap ('ffff 0 3ff...' words, MSB first)."""
     words = caps_hex.split()
@@ -67,15 +105,22 @@ def has_key(caps_hex, code):
     return 0 <= idx < len(words) and bool(int(words[idx], 16) >> (code % bits) & 1)
 
 
-def devices_with(code, root="/sys/class/input"):
+def devices_with(code, root="/sys/class/input", maps=None):
+    """[(event device, its code -> standard code)] of gamepads that have this
+    (standard) button. maps: es_pad_maps(); pads not in it use standard codes."""
+    maps = es_pad_maps() if maps is None else maps
     found = []
     for caps in sorted(glob.glob(os.path.join(root, "event*", "device", "capabilities", "key"))):
         try:
             with open(caps) as f:
-                if has_key(f.read(), code):
-                    found.append("/dev/input/" + caps.split(os.sep)[-4])
+                bits = f.read()
+            with open(os.path.join(os.path.dirname(os.path.dirname(caps)), "name")) as f:
+                translate = maps.get(f.read().strip(), {})
         except OSError:
-            pass
+            continue
+        own = {std: dev for dev, std in translate.items()}.get(code, code)
+        if has_key(bits, own):
+            found.append(("/dev/input/" + caps.split(os.sep)[-4], translate))
     return found
 
 
@@ -183,16 +228,19 @@ class ButtonWatcher(threading.Thread):
             self.status = "off"
             time.sleep(5)
             return
-        paths = devices_with(code)
-        if not paths:
+        pads = devices_with(code)
+        if not pads:
             self.status = "no gamepad has button %s" % name
             time.sleep(10)
             return
+        paths = [p for p, _ in pads]
         fds = [os.open(p, os.O_RDONLY | os.O_NONBLOCK) for p in paths]
+        translate = dict(zip(fds, (t for _, t in pads)))
         with self.changed:
             self.fds, self.held = fds, set()
             self.changed.notify_all()
-        self.status = "watching %s on %s" % (name, ", ".join(paths))
+        self.status = "watching %s on %s" % (name, ", ".join(
+            p + (" (button map from es_input.cfg)" if t else "") for p, t in pads))
         self.log.write("urusai: %s\n" % self.status)
         try:
             combo = combo_codes(self.get_combo())
@@ -205,8 +253,10 @@ class ButtonWatcher(threading.Thread):
                 ready, _, _ = select.select(fds, [], [], 2.0)
                 for fd in ready:
                     data = os.read(fd, EVENT.size * 64)
+                    tr = translate[fd]
                     for off in range(0, len(data) - EVENT.size + 1, EVENT.size):
-                        self.event(*EVENT.unpack_from(data, off)[2:])
+                        etype, ecode, value = EVENT.unpack_from(data, off)[2:]
+                        self.event(etype, tr.get(ecode, ecode) if etype == EV_KEY else ecode, value)
         finally:
             with self.changed:
                 self.fds, self.held = [], set()

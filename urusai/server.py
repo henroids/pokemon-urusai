@@ -371,31 +371,32 @@ def retroarch_pids():
 
 
 class Starter:
-    """Presses RetroArch's AI Service hotkey (F8+F6) through a virtual keyboard:
+    """Presses RetroArch's AI Service hotkey (F8+F6 on dArkOS, Shift+F9 on Knulli)
+    through a virtual keyboard:
     to start the stream when a game starts or the button finds it stopped, and
     twice in a row to stop speech when a game button is pressed.
 
-    F8 is RetroArch's hotkey enable (like holding Select), so it is only
+    The first key is RetroArch's hotkey enable (like holding Select), so it is only
     pressed once the player has let go of every button, with the pad
     grabbed meanwhile: otherwise a held A would become Select+A (pause)."""
 
     RELEASE_WAIT = 1.0   # give up on a cut if a button is still held this long
 
-    def __init__(self, app, log=sys.stderr):
+    def __init__(self, app, keys="f8+f6", log=sys.stderr):
         self.app, self.log = app, log
         self.kbd, self.status = None, "off"
         self.lock = threading.Lock()
         try:
-            from .vkbd import VirtualKeyboard
-            self.kbd = VirtualKeyboard()
-            self.status = "virtual keyboard ready"
+            from .vkbd import VirtualKeyboard, key_codes
+            self.kbd = VirtualKeyboard(key_codes(keys))
+            self.status = "virtual keyboard ready (%s)" % keys
         except Exception as e:  # no /dev/uinput, no permission…
-            self.status = "no virtual keyboard (%s) - press Select+Y once to start" % e
+            self.status = "no virtual keyboard (%s) - start the reader by hand once" % e
         self.started_for = set()
         self.watcher = None          # set by main: knows which buttons are held
 
     def _press(self, *holds, wait=RELEASE_WAIT):
-        """F8+F6 once per hold, never together with a held game button."""
+        """The key pair once per hold, never together with a held game button."""
         with self.lock:
             w = self.watcher
             if w and not w.wait_released(wait):
@@ -467,6 +468,8 @@ def main(argv=None):
                    help="keep recent spoken frames + readings here (for fixing misreads)")
     p.add_argument("--cache", default=os.path.join(HERE, "cache"), help="speech cache folder ('' = memory only)")
     p.add_argument("--no-input", action="store_true", help="don't watch the gamepad or press keys")
+    p.add_argument("--keys", default="f8+f6", help="RetroArch's hotkey-enable + AI Service keys "
+                   "(dArkOS: f8+f6, as the installer sets them; Knulli: shift+f9)")
     a = p.parse_args(argv)
 
     settings = Settings(a.settings)
@@ -476,7 +479,7 @@ def main(argv=None):
 
     watcher = starter = None
     if not a.no_input:
-        starter = Starter(app)
+        starter = Starter(app, a.keys)
         app.can_interrupt = starter.kbd is not None
         threading.Thread(target=starter.watch_games, daemon=True, name="urusai-autostart").start()
 

@@ -15,7 +15,7 @@ if [ -d "$ROOT/neural/aarch64" ]; then   # the natural voice's program (the voic
   mkdir -p "$PKG/neural"; cp -r "$ROOT/neural/aarch64" "$PKG/neural/"
 fi
 find "$PKG" -name __pycache__ -prune -exec rm -rf {} +
-cp "$ROOT/install/darkos/Install Pokemon Urusai.sh" "$STAGE/"
+cp "$ROOT/install/Install Pokemon Urusai.sh" "$STAGE/"
 (cd "$STAGE" && rm -f "$OUT/PokemonUrusai-$VER.zip" && zip -qr9 "$OUT/PokemonUrusai-$VER.zip" .)
 rm -rf "$STAGE"
 ls -lh "$OUT/PokemonUrusai-$VER.zip"
