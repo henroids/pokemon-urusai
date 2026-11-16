@@ -99,7 +99,7 @@ Dialogue can be read in a much more natural voice, つくよみちゃん, made b
 **Getting the voice (once, about 40 MB):**
 
 - Easiest: connect the handheld to Wi-Fi and run the installer. It downloads the voice by itself and says "Natural voice: ready".
-- Without Wi-Fi: on a computer, open <https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan>, download `tsukuyomi-chan-6lang-fp16.onnx` and `config.json`, put both in a folder called `tsukuyomi` on the SD card (next to your game folders), and run the installer.
+- Without Wi-Fi: on a computer, open <https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan>, download `tsukuyomi-chan-6lang-fp16.onnx` and `config.json`, put both in a folder called `tsukuyomi` on the SD card (next to your game folders: in `roms` on Knulli), and run the installer.
 
 If the voice isn't there, the standard voice is used and nothing else changes. To switch the natural voice off, set `voice = tohoku` in the settings file. `urusai_captures/STATUS.txt` says whether it's in use.
 
@@ -135,7 +135,7 @@ Any other button cuts off the speech, as on dArkOS.
 
 **Updating:** copy the new release over the old one in `ports` and run the installer again. **Uninstalling:** **Ports → Uninstall Pokemon Urusai** (Update Gamelists first if it isn't listed).
 
-The natural voice (つくよみちゃん) is installed on dArkOS only for now; on Knulli the standard voice is used.
+**The natural voice (つくよみちゃん)** works the same as on dArkOS (see "Natural voice"): connect Wi-Fi before step 3 and the installer downloads it, or put the two files in a `tsukuyomi` folder inside `roms`. When it's done, the handheld says 「インストール できました。ゲームを はじめてね。」 if the natural voice is ready, or 「…でも、しぜんな こえは まだ ありません。」 if it isn't (the standard voice is used then). The RG35XXSP's processor is a bit slower than the RGB20 Pro's, so new lines take a little longer to switch to the natural voice.
 
 ## GBA games (new, experimental)
 

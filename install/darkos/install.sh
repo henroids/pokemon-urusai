@@ -39,40 +39,8 @@ cp -f "$SRC"/README.md "$SRC"/INSTALL.md "$SRC"/LICENSES.md "$DEST/" 2>/dev/null
 chmod +x "$DEST/bin/open_jtalk-aarch64"
 mkdir -p "$CAPTURE_DIR" && chown "$USER_NAME" "$CAPTURE_DIR" 2>/dev/null
 
-# The natural voice (piper-plus): the program comes with this package, the voice
-# itself (つくよみちゃん, about 40 MB) is fetched once, or copied from the SD card.
-NEURAL="$DEST/neural"; MODEL_DIR="$NEURAL/model"; PP="$NEURAL/aarch64/bin/piper-plus"
-if [ -d "$SRC/neural/aarch64" ]; then
-  mkdir -p "$MODEL_DIR"
-  rm -rf "$NEURAL/aarch64"; cp -r "$SRC/neural/aarch64" "$NEURAL/"; chmod +x "$PP"
-  pp() { LD_LIBRARY_PATH="$NEURAL/aarch64/lib" OPENJTALK_DICTIONARY_PATH="$DEST/dic" PIPER_PLUS_AUTO_DOWNLOAD_DICT=0 "$PP" "$@"; }
-  have_model() { find "$MODEL_DIR" -name '*tsukuyomi*.onnx' -size +1M 2>/dev/null | grep -q .; }
-  if ! have_model; then
-    for d in "$SRC/neural/model" "$SRC/../tsukuyomi" /roms/tsukuyomi /roms2/tsukuyomi /roms/ports/tsukuyomi; do
-      ls "$d"/*tsukuyomi*.onnx >/dev/null 2>&1 || continue
-      say "Natural voice: copying it from $d ..."
-      cp "$d"/*.onnx "$d"/*.json "$MODEL_DIR/" 2>/dev/null
-      break
-    done
-  fi
-  if ! have_model; then
-    say "Natural voice: downloading it (needs Wi-Fi, about 40 MB, a few minutes) ..."
-    timeout 900 env LD_LIBRARY_PATH="$NEURAL/aarch64/lib" "$PP" --download-model tsukuyomi --model-dir "$MODEL_DIR" >> "$LOG" 2>&1
-  fi
-  if have_model; then
-    M="$(find "$MODEL_DIR" -name '*tsukuyomi*.onnx' | head -1)"
-    t0=$(date +%s.%N)
-    if pp -q -m "$M" -l ja -t "ポケモンの せかいへ ようこそ" -f /tmp/urusai_neural.wav >> "$LOG" 2>&1 && [ -s /tmp/urusai_neural.wav ]; then
-      say "Natural voice: ready ($(echo "$(date +%s.%N) $t0" | awk '{printf "%.1f", $1-$2}') s to start and say a test line)"
-    else
-      say "Natural voice: did not run on this system; the standard voice is used. (details in $LOG)"
-    fi
-    rm -f /tmp/urusai_neural.wav
-  else
-    say "Natural voice: not installed (no Wi-Fi?). The standard voice is used until it is."
-    say "  Either connect Wi-Fi and run this installer again, or see INSTALL.md, 'Natural voice'."
-  fi
-fi
+MODEL_SEARCH="/roms/tsukuyomi /roms2/tsukuyomi /roms/ports/tsukuyomi"
+. "$SRC/install/common/natural_voice.sh"
 
 # Create the settings file, or refresh its comments/new options keeping your values.
 (cd "$DEST" && python3 -m urusai.settings "$SETTINGS") && say "Settings: $SETTINGS"

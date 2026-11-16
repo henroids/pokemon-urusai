@@ -45,7 +45,7 @@ done
 
 say "Copying files to $DEST ..."
 mkdir -p "$DEST" || die "can't create $DEST"
-for d in urusai bin dic voice font; do
+for d in urusai bin dic voice font; do   # (neural/: below, it keeps the downloaded voice)
   rm -rf "${DEST:?}/$d"
   cp -r "$SRC/$d" "$DEST/" || die "copy of $d failed (SD card full?)"
 done
@@ -59,6 +59,10 @@ if ! echo "テスト" | "$DEST/bin/open_jtalk-aarch64" -x "$DEST/dic" -m "$DEST/
 fi
 rm -f /tmp/urusai_test.wav
 (cd "$DEST" && python3 -c "import urusai.server" >> "$LOG" 2>&1) || die "python3 is missing a module the reader needs (see $LOG)"
+
+NATURAL_VOICE=none
+MODEL_SEARCH="/userdata/roms/tsukuyomi /userdata/roms/ports/tsukuyomi /userdata/tsukuyomi"
+. "$SRC/install/common/natural_voice.sh"
 
 # Settings file: create it, or refresh its comments while keeping the values.
 (cd "$DEST" && python3 -m urusai.settings "$SETTINGS") >> "$LOG" 2>&1 || say "  (couldn't write $SETTINGS)"
@@ -93,6 +97,14 @@ case "\$1" in
     "\$BIN" </dev/null >/dev/null 2>&1
     if [ \$? -ge 126 ]; then   # 126/127: the card won't let programs run, so run it from memory
       mkdir -p /tmp/urusai-bin && cp "\$BIN" /tmp/urusai-bin/ && chmod +x /tmp/urusai-bin/* && BIN=/tmp/urusai-bin/open_jtalk-aarch64
+    fi
+    PP="\$DEST/neural/aarch64/bin/piper-plus"   # the natural voice, same check
+    if [ -f "\$PP" ]; then
+      "\$PP" --help >/dev/null 2>&1
+      if [ \$? -ge 126 ]; then
+        rm -rf /tmp/urusai-neural; cp -r "\$DEST/neural/aarch64" /tmp/urusai-neural && chmod +x /tmp/urusai-neural/bin/piper-plus
+        export URUSAI_PIPER=/tmp/urusai-neural/bin/piper-plus
+      fi
     fi
     cd "\$DEST" || exit 1
     URUSAI_OPEN_JTALK="\$BIN" nohup nice -n 5 python3 -m urusai.server --port 4404 --keys shift+f9 \\
@@ -131,7 +143,10 @@ if curl -s -m 3 http://127.0.0.1:4404/ >/dev/null 2>&1 || [ "$("$SERVICE" status
   say "Done! Start a Game Boy or GBA game: the text is read automatically."
   say "L2 = say it again.  Select + L2 = reader off/on.  Hotkey + R1 = start/stop by hand."
   say "Settings: $SETTINGS   Status: $CAPTURE_DIR/STATUS.txt"
-  speak "インストール できました。ゲームを はじめてね。"
+  case "$NATURAL_VOICE" in
+    ready) speak "インストール できました。ゲームを はじめてね。" ;;
+    *)     speak "インストール できました。でも、しぜんな こえは まだ ありません。" ;;
+  esac
 else
   die "the reader didn't start (see /userdata/system/logs/urusai.log)"
 fi
