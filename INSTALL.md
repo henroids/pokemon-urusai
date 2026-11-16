@@ -131,7 +131,7 @@ Any other button cuts off the speech, as on dArkOS.
 
 **What the installer changes:** it adds seven lines starting with `global.retroarch.` to `/userdata/system/batocera.conf` (Knulli rewrites RetroArch's own settings at every game start, so they have to go there), and keeps a copy of the file as `batocera.conf.urusai-backup`. If you had Knulli's own **AI Game Translation** switched on, the reader's lines take over from it.
 
-**If it doesn't work:** send `roms/urusai_install.log`, `roms/urusai_captures/STATUS.txt` and `/userdata/system/logs/urusai.log`. STATUS.txt's `button:` line says whether L2 was found; the RG35XXSP's buttons send unusual codes, so the reader reads Knulli's own button map to find them.
+**If it doesn't work:** send `roms/urusai_system_report.txt`, `roms/urusai_install.log` and `roms/urusai_captures/STATUS.txt`. STATUS.txt's `button:` line says whether L2 was found; the RG35XXSP's buttons send unusual codes, so the reader reads Knulli's own button map to find them.
 
 **Updating:** copy the new release over the old one in `ports` and run the installer again. **Uninstalling:** **Ports → Uninstall Pokemon Urusai** (Update Gamelists first if it isn't listed).
 
