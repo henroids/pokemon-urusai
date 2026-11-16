@@ -104,8 +104,8 @@ class App:
 
     def _apply_settings(self):
         s, n = self.settings, self.narrator
-        n.speaker.configure(s["voice"], s["speed"], s["volume"])
-        n.menu_speaker.configure(s["menu_voice"], s["speed"], s["volume"])
+        n.speaker.configure(s["voice"], s["speed"], s["volume"], s["natural_speed"])
+        n.menu_speaker.configure(s["menu_voice"], s["speed"], s["volume"], s["natural_speed"])
         n.cues = s["sound_cues"] == "on"
         n.position = s["menu_position"] == "on"
         n.pause_ms = max(0, min(2000, s["option_pause"]))

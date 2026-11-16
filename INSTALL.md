@@ -73,9 +73,10 @@ Open `urusai_settings.txt` on the games SD card with any text editor. Changes ap
 | `menu_position` | `off` | Say the position after the selected option, e.g. 「2ばんめ」 |
 | `menu_voice` | `tohoku-4` | Voice for menu options (Tohoku, 4 semitones lower) |
 | `interrupt` | `on` | Stop talking whenever you press a game button |
-| `volume` | `200` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
+| `volume` | `220` | Voice volume in %. `100` is natural; higher is louder over the music. All voices are levelled to the same loudness, and it's limited so it never crackles. |
 | `voice` | `tsukuyomi` | Dialogue voice: `tsukuyomi` (natural, see "Natural voice") or a standard one: `tohoku`, `tohoku_happy`, `mei`, `mei_happy`, `mei_bashful`, `nitech`. Add `+N`/`-N` semitones. |
 | `speed` | `0.95` | `1.0` is normal; `0.85` is slower |
+| `natural_speed` | `0.85` | The natural voice only, compared with `speed`: `0.85` = 15% slower, `1.0` = the same |
 | `option_pause` | `300` | Pause between menu options and choices, in milliseconds. Text itself is read in one flow, without pauses. |
 | `captures_keep` | `50` | How many recently read screens to keep in `urusai_captures` (each is about 2 KB). `0` saves none. |
 | `gba_learn` | `on` | GBA games: also keep a screen now and then when nothing could be read (see "GBA games") |

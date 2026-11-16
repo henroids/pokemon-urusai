@@ -17,8 +17,9 @@ DEFAULTS = {
     "menu_position": "off",  # say 「2ばんめ」 after the selected option
     "voice": "tsukuyomi",    # dialogue voice: tsukuyomi (natural), or a file in voice/: tohoku, mei, nitech…
     "menu_voice": "tohoku-4",  # voice for menu options (a voice name, optionally +/- semitones)
-    "volume": 200,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
+    "volume": 220,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
     "speed": 0.95,           # 1.0 = normal speaking speed
+    "natural_speed": 0.85,   # the natural voice's speed on top of that (0.85 = 15% slower)
     "option_pause": 300,     # milliseconds of silence between menu options / choices
     "captures_keep": 50,     # newest spoken screens kept in urusai_captures (0 = don't save any)
     "gba_learn": "on",       # GBA games: also keep a screen now and then when nothing could be read
@@ -69,6 +70,10 @@ volume = {volume}
 
 # Speaking speed. 1.0 = normal, 0.85 = slower, 1.15 = faster.
 speed = {speed}
+
+# The natural voice (tsukuyomi) only: its speed compared with the setting above.
+# 0.85 = 15% slower, 1.0 = the same as the standard voice.
+natural_speed = {natural_speed}
 
 # Pause between menu options and choices, in milliseconds (text itself is read without pauses).
 option_pause = {option_pause}
@@ -136,7 +141,8 @@ def write_template(path, overrides=None):
 # Old defaults that were never changed by hand are moved to the new default.
 MIGRATIONS = {"menu_voice": {"nitech": "tohoku-4"},
               "voice": {"tohoku": "tsukuyomi"},          # the natural voice became the default
-              "toggle_combo": {"L1+R1": "SELECT+L2"}}   # L1/R1 change the shader on dArkOS
+              "toggle_combo": {"L1+R1": "SELECT+L2"},   # L1/R1 change the shader on dArkOS
+              "volume": {200: 220}}                     # 10% louder (Henry, 2026-11-17)
 
 
 def upgrade(path):

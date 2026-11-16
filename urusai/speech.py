@@ -247,8 +247,9 @@ class Narrator:
         """Cache key of a piece's clip: the natural one, or the quick one
         (the same thing unless the speaker's voice is a neural one)."""
         sp = self._speaker(piece[0])
-        voice = sp.hts if quick or not sp.neural else sp.neural
-        return (os.path.basename(voice), sp.pitch, sp.speed, sp.volume, piece[1])
+        if quick or not sp.neural:
+            return (os.path.basename(sp.hts), sp.pitch, sp.speed, sp.volume, piece[1])
+        return (os.path.basename(sp.neural), sp.pitch, sp.speed * sp.natural_speed, sp.volume, piece[1])
 
     def _synth(self, piece, quick=False):
         key = self._key(piece, quick)

@@ -255,6 +255,16 @@ class Buttons(unittest.TestCase):
         self.assertEqual((pressed, game), ([1], [1]))  # MENU is neither L2 nor a game button
 
 
+class SettingsUpgrade(unittest.TestCase):
+    def test_old_default_volume_moves_up_a_chosen_one_stays(self):
+        for old, new in (("200", "220"), ("150", "150")):
+            path = os.path.join(tempfile.mkdtemp(), "urusai_settings.txt")
+            with open(path, "w") as f:
+                f.write("volume = %s\n" % old)
+            settings.upgrade(path)
+            self.assertEqual(settings.Settings(path)["volume"], int(new))
+
+
 class RetroArchCheck(unittest.TestCase):
     """STATUS.txt says whether RetroArch got the settings the reader needs."""
 
@@ -384,6 +394,16 @@ class NaturalVoice(unittest.TestCase):
         low = Speaker(voice="tsukuyomi-4", speed=1.0)
         self.assertAlmostEqual(self.seconds(low.wav("たたかう")), 1.0, delta=0.03)     # lower, not slower
         self.assertEqual(len(self.neural._engines), 2)
+
+    def test_natural_speed_slows_only_the_natural_voice(self):
+        self.install_model()
+        sp = Speaker(voice="tsukuyomi")
+        sp.configure("tsukuyomi", 1.0, 100, natural_speed=0.85)
+        self.assertAlmostEqual(self.seconds(sp.wav("たたかう")), 1 / 0.85, delta=0.03)   # stub: 1 s at speed 1
+        quick = Speaker(voice="tsukuyomi")
+        quick.configure("tsukuyomi", 1.0, 100, natural_speed=1.0)
+        self.assertAlmostEqual(self.seconds(sp.wav("たたかう", quick=True)),
+                               self.seconds(quick.wav("たたかう", quick=True)), delta=0.02)   # standard voice unchanged
 
     def test_first_time_quick_voice_then_natural_from_the_cache(self):
         from urusai.speech import Narrator

@@ -60,7 +60,7 @@ class Speaker:
         if missing:
             raise RuntimeError("missing: " + ", ".join(missing))
 
-    def configure(self, voice, speed, volume):
+    def configure(self, voice, speed, volume, natural_speed=1.0):
         """voice may carry a pitch shift in semitones, e.g. 'mei+3' or 'tohoku-4'."""
         name, pitch = parse_voice(voice)
         self.pitch = max(-12.0, min(12.0, pitch))
@@ -70,6 +70,7 @@ class Speaker:
         self.voice = self.neural or self.hts
         self.speed = min(2.0, max(0.5, float(speed)))
         self.volume = min(400, max(0, int(volume)))
+        self.natural_speed = min(2.0, max(0.5, float(natural_speed)))   # the natural voice only
 
     def wav(self, text, particles=(), quick=False):
         """Speak text. particles: indices of は/へ that must sound wa/e; if Open JTalk
@@ -85,7 +86,7 @@ class Speaker:
             text = "".join(fixed)
             raw = None if slow else self._synth(text, analyse=False)[0]
         if slow:   # piper-plus reads with the same dictionary, so the same respelling applies
-            raw = neural.wav(self.neural, self.dic, text, self.speed, self.pitch)
+            raw = neural.wav(self.neural, self.dic, text, self.speed * self.natural_speed, self.pitch)
         return audio.louder(raw, self.volume, level=True)  # every voice equally loud
 
     def _synth(self, text, analyse):
