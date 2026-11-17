@@ -130,6 +130,7 @@ def write_template(path, overrides=None):
 
 # Old defaults that were never changed by hand are moved to the new default.
 MIGRATIONS = {"menu_voice": {"nitech": "tohoku-4"},
+              "voice": {"tsukuyomi": "tohoku"},          # back from the natural-voice build
               "toggle_combo": {"L1+R1": "SELECT+L2"},   # L1/R1 change the shader on dArkOS
               "volume": {200: 220}}                     # 10% louder (Henry, 2026-11-17)
 

@@ -256,6 +256,13 @@ class Buttons(unittest.TestCase):
 
 
 class SettingsUpgrade(unittest.TestCase):
+    def test_coming_back_from_the_natural_voice_build(self):
+        path = os.path.join(tempfile.mkdtemp(), "urusai_settings.txt")
+        with open(path, "w") as f:
+            f.write("voice = tsukuyomi\nvolume = 220\n")
+        settings.upgrade(path)
+        self.assertEqual(settings.Settings(path)["voice"], "tohoku")
+
     def test_old_default_volume_moves_up_a_chosen_one_stays(self):
         for old, new in (("200", "220"), ("150", "150")):
             path = os.path.join(tempfile.mkdtemp(), "urusai_settings.txt")
