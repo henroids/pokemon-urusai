@@ -44,9 +44,10 @@ from .speech import Narrator
 from .tts import HERE, Speaker
 
 NO_TEXT = "No text found."
-POLL = 0.15            # seconds between frames while nothing is said
-STABLE_MENU = 0.2      # a menu must sit still this long before it's read
-STABLE_TEXT = 0.6      # dialogue without ▼ that stopped changing this long is complete
+POLL = 0.1             # seconds between frames while nothing is said
+STABLE_MENU = 0.15     # a menu must sit still this long before it's read
+STABLE_TEXT = 0.4      # dialogue without ▼ that stopped changing this long is complete
+LATENCIES = 50         # recent readings timed for STATUS.txt
 PRESS_TIMEOUT = 1.5    # a press is served after this even if text still moves
 STREAM_GAP = 4.0       # no frame for this long (and not speaking) = stream stopped
 SPEECH_MARGIN = 1.5    # RetroArch asks again a little after our speech has played
@@ -93,6 +94,7 @@ class App:
         self.sig = None             # what's on screen now…
         self.stable_since = 0.0     # …and since when
         self.spoken_sig = None      # the screen we last read aloud
+        self.latency = collections.deque(maxlen=LATENCIES)  # (text still → speech sent, of which making)
 
     # ---- state ----------------------------------------------------------
     def _mtime(self):
@@ -239,9 +241,9 @@ class App:
         # 3. "say it again"
         if self.pending is not None and ((ready and (settled or reading.kind != "dialogue"))
                                          or now - self.pending >= PRESS_TIMEOUT):
-            self.pending = None
+            asked, self.pending = self.pending, None
             self.spoken_sig = sig
-            return self._start(n.plan(reading, repeat=True), reading, img, sig)
+            return self._start(n.plan(reading, repeat=True), reading, img, sig, asked)
         # 4. automatic reading
         auto = self.settings["auto_read"] == "on"
         if self.hold is not None:
@@ -272,15 +274,20 @@ class App:
             n.prepare(n.plan(reading))  # still settling: get its speech ready
         return None
 
-    def _start(self, chunks, reading, img, sig):
-        """Say the first chunk now, queue the rest. None = nothing to say."""
+    def _start(self, chunks, reading, img, sig, since=None):
+        """Say the first chunk now, queue the rest. None = nothing to say.
+        since: when the text was there to read (default: when the screen settled)."""
         self.narrator.remember(reading)
         if not chunks:
             return None
         self.queue = collections.deque(chunks[1:])
         self.queue_sig = sig
         self.narrator.prepare(chunks[1:])
-        return self._send(chunks[0], img, reading)
+        made = self.clock()
+        reply = self._send(chunks[0], img, reading)
+        done = self.clock()
+        self.latency.append((done - (self.stable_since if since is None else since), done - made))
+        return reply
 
     def _send(self, chunk, img, reading):
         return self._send_wav(self.narrator.render(chunk), img, reading.flat())
@@ -513,12 +520,24 @@ def write_status(app, watcher, starter, port):
             f.write("voices: %s (dialogue), %s %+g (menus), volume %d%%\n" % (
                 os.path.basename(n.speaker.voice), os.path.basename(n.menu_speaker.voice),
                 n.menu_speaker.pitch, n.speaker.volume))
+            for line in latency_report(app.latency):
+                f.write(line + "\n")
             f.write("auto read: %s, autostart: %s, interrupt: %s\n" % (s["auto_read"], s["autostart"], s["interrupt"]))
             f.write("button: %s, reader on/off: %s\n" % (watcher.status if watcher else "off", s["toggle_combo"]))
             f.write("settings: %s\n" % s.path)
         os.replace(tmp, os.path.join(app.capture_dir, "STATUS.txt"))
     except OSError as e:
         sys.stderr.write("urusai: cannot write status: %r\n" % e)
+
+
+def latency_report(latency):
+    """STATUS.txt line: how long text waits before it's heard."""
+    if not latency:
+        return []
+    total = sorted(t for t, _ in latency)
+    return ["delay from text on screen to speech (last %d): typical %.2f s, longest %.2f s;"
+            " making the sound %.2f s (average)" % (
+                len(total), total[len(total) // 2], total[-1], sum(m for _, m in latency) / len(latency))]
 
 
 def keep_status(app, watcher, starter, port):

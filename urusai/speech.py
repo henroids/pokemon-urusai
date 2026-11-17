@@ -28,6 +28,9 @@ from .sounds import cue, silence, to_wav, trim, wav_samples
 MAX_OPTIONS = 12   # bigger "menus" (the name grid) just say the selection
 JOIN_LEAD = 48000 * 40 // 1000   # trimmed from the start of a following line…
 JOIN_TAIL = 48000 * 60 // 1000   # …and the end of the line before: ~30 ms between lines
+SENTENCE_END = "。！？!?…‥」』"   # a line ending in one of these ends a sentence…
+SENTENCE_PAUSE = 380             # …and gets a breath before the next line, as a person would (ms)
+COMMA_PAUSE = 180                # a line ending in 、 or ，: a shorter one
 CACHE_VERSION = 3  # bump when synthesis or trimming changes
 YES, NO = "はい", "いいえ"
 
@@ -252,6 +255,7 @@ class Narrator:
     def render(self, chunk):
         """WAV bytes for one chunk (uses the cache, synthesises what's missing)."""
         out = array.array("h")
+        paused = False
         for i, piece in enumerate(chunk):
             if piece[0] == "gap":
                 out += silence(self.pause_ms - 120)  # RetroArch's own round trip adds ~0.1 s
@@ -261,14 +265,27 @@ class Narrator:
                 samples = self._synth(piece)
                 nxt = chunk[i + 1][0] if i + 1 < len(chunk) else None
                 prev = chunk[i - 1][0] if i else None
-                if piece[0] == "talk" and prev == "talk":
-                    samples = samples[JOIN_LEAD:]   # lines of one box run straight on
-                if piece[0] == "talk" and nxt == "talk":
+                breath = self._breath(piece) if nxt == "talk" else 0
+                if piece[0] == "talk" and prev == "talk" and not paused:
+                    samples = samples[JOIN_LEAD:]   # a sentence running on to the next line
+                if piece[0] == "talk" and nxt == "talk" and not breath:
                     samples = samples[:-JOIN_TAIL] if len(samples) > JOIN_TAIL else samples
                 out += samples
+                paused = bool(breath)
+                if breath:
+                    out += silence(breath)
                 if nxt in ("talk", "menu") and not (piece[0] == "talk" and nxt == "talk"):
                     out += silence(self.pause_ms)
         return to_wav(out)
+
+    def _breath(self, piece):
+        """Silence (ms) after this line when another line follows: where a sentence
+        or a clause ends, a short pause, as when reading aloud; mid-sentence, none."""
+        if piece[0] != "talk":
+            return 0
+        end = piece[1].rstrip()[-1:]
+        ms = 0 if not end else SENTENCE_PAUSE if end in SENTENCE_END else COMMA_PAUSE if end in "、，," else 0
+        return int(ms / max(0.5, self._speaker("talk").speed))
 
     def ready(self, chunk):
         return all(self.cache.has(self._key(p)) for p in chunk if p[0] in ("talk", "menu"))
