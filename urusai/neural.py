@@ -84,8 +84,11 @@ class Engine:
         if self.proc:
             self.proc.kill()
             self.proc.wait()
-            self.proc.stdin.close()
-            self.proc.stdout.close()
+            for pipe in (self.proc.stdin, self.proc.stdout):
+                try:
+                    pipe.close()
+                except OSError:
+                    pass  # unsent input to a program that died
             self.proc = None
 
     def samples(self, text, rate_factor=1.0):

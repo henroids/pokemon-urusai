@@ -567,6 +567,16 @@ class Streaming(unittest.TestCase):
         self.assertEqual(self.frame(box2, self.app.settings["natural_wait"]), [("talk", "ゆけ！ ゼニガメ！")])
         self.assertTrue(any("natural voice" in line for line in server.latency_report(self.app.latency)))
 
+    def test_a_breath_where_a_sentence_ends_and_the_delay_is_timed(self):
+        from urusai.speech import SENTENCE_PAUSE
+        n = self.app.narrator
+        run_on = n.render([("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた")])
+        ended = n.render([("talk", "やせいの ピカチュウが！"), ("talk", "とびだしてきた")])
+        self.assertGreater(len(ended) - len(run_on), 96 * SENTENCE_PAUSE * 0.8)
+        self.frame(two_line_box(self.g, "やせいの ピカチュウが", "とびだしてきた！", more=True))
+        self.assertEqual(len(self.app.latency), 1)
+        self.assertTrue(server.latency_report(self.app.latency))
+
     def test_settled_box_is_one_clip(self):
         self.assertEqual(self.frame(dialogue_canvas(self.g)),
                          [("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた！")])
