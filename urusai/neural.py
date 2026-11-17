@@ -2,9 +2,9 @@
 
 piper-plus is started once per voice and fed one line at a time, so the
 model is loaded only once. It is much slower than Open JTalk on a handheld
-(about as long to make a line as to say it), so speech.Narrator only uses
-it for clips it has had time to make, and says everything else with the
-quick voice meanwhile.
+(about as long to make a line as to say it), so it starts on each line
+as soon as the line is on screen, and the reader waits for it briefly
+(setting natural_wait) before falling back to the quick voice.
 
 Files (the installer puts them in place):
   neural/<machine>/bin/piper-plus, neural/<machine>/lib/   the program and ONNX Runtime
@@ -30,6 +30,7 @@ START_TIMEOUT = 90     # seconds for the first line (the model loads from the SD
 LINE_TIMEOUT = 45
 THREADS = "3"          # of the handheld's four cores; the game keeps one
 NICE = 10              # …and goes first whenever both want the processor
+ERRORS = os.path.join(SCRATCH or tempfile.gettempdir(), "urusai-piper.log")   # its messages, for STATUS.txt
 
 
 def find_binary():
@@ -70,8 +71,9 @@ class Engine:
         config = find_config(self.model)
         if config:
             cmd += ["-c", config]
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                     env=env, preexec_fn=lambda: os.nice(NICE))
+        with open(ERRORS, "wb") as err:
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err,
+                                         env=env, preexec_fn=lambda: os.nice(NICE))
         return START_TIMEOUT
 
     def stop(self):
@@ -97,16 +99,30 @@ class Engine:
                 self.proc.stdin.write(line.encode("utf-8"))
                 self.proc.stdin.flush()
                 if not select.select([self.proc.stdout], [], [], timeout)[0] or not self.proc.stdout.readline():
-                    raise RuntimeError("piper-plus gave no answer")
+                    raise RuntimeError("no answer (exit code %s); piper-plus said: %s" % (self.proc.poll(), last_error()))
                 with open(out, "rb") as f:
                     samples, rate = wav_samples_rate(f.read())
-            except Exception:
+            except RuntimeError:
                 self._kill()   # start afresh next time
                 raise
+            except Exception as e:
+                self._kill()
+                raise RuntimeError("%s; piper-plus said: %s" % (e, last_error()))
             finally:
                 if os.path.exists(out):
                     os.unlink(out)
         return audio.resample(samples, int(round(rate * rate_factor / 50.0)) * 50, RATE)
+
+
+def last_error():
+    """The end of what piper-plus last printed."""
+    try:
+        with open(ERRORS, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 400))
+            return " ".join(f.read().decode("utf-8", "replace").split())[-300:] or "nothing"
+    except OSError:
+        return "nothing"
 
 
 MAX_ENGINES = 2        # dialogue and menu voice; each is a model in memory

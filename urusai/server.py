@@ -45,9 +45,10 @@ from . import tts
 from .tts import HERE, Speaker
 
 NO_TEXT = "No text found."
-POLL = 0.15            # seconds between frames while nothing is said
-STABLE_MENU = 0.2      # a menu must sit still this long before it's read
-STABLE_TEXT = 0.6      # dialogue without ▼ that stopped changing this long is complete
+POLL = 0.1             # seconds between frames while nothing is said
+STABLE_MENU = 0.15     # a menu must sit still this long before it's read
+STABLE_TEXT = 0.4      # dialogue without ▼ that stopped changing this long is complete
+LATENCIES = 50         # recent readings timed for STATUS.txt
 PRESS_TIMEOUT = 1.5    # a press is served after this even if text still moves
 STREAM_GAP = 4.0       # no frame for this long (and not speaking) = stream stopped
 SPEECH_MARGIN = 1.5    # RetroArch asks again a little after our speech has played
@@ -94,6 +95,9 @@ class App:
         self.sig = None             # what's on screen now…
         self.stable_since = 0.0     # …and since when
         self.spoken_sig = None      # the screen we last read aloud
+        self.wait_chunk = None      # the speech that's waiting for the natural voice…
+        self.wait_since = 0.0       # …since when
+        self.latency = collections.deque(maxlen=LATENCIES)  # (text still → speech sent, of which waiting, making)
 
     # ---- state ----------------------------------------------------------
     def _mtime(self):
@@ -223,6 +227,8 @@ class App:
         # 1. the rest of what we were saying, if the screen hasn't moved on
         if self.queue:
             if sig == self.queue_sig and not cut:
+                if not self._voice_ready(self.queue[0], now):
+                    return None
                 return self._send(self.queue.popleft(), img, reading)
             self.queue.clear()
         # 2. our own announcements, shown on screen until the next reply
@@ -240,9 +246,12 @@ class App:
         # 3. "say it again"
         if self.pending is not None and ((ready and (settled or reading.kind != "dialogue"))
                                          or now - self.pending >= PRESS_TIMEOUT):
-            self.pending = None
+            chunks = n.plan(reading, repeat=True)
+            if chunks and not self._voice_ready(chunks[0], now):
+                return None
+            asked, self.pending = self.pending, None
             self.spoken_sig = sig
-            return self._start(n.plan(reading, repeat=True), reading, img, sig)
+            return self._start(chunks, reading, img, sig, now, asked)
         # 4. automatic reading
         auto = self.settings["auto_read"] == "on"
         if self.hold is not None:
@@ -255,8 +264,10 @@ class App:
                 return None
             chunks = n.plan(reading, settled=True)
             if chunks and auto:
+                if not self._voice_ready(chunks[0], now):
+                    return None
                 self.spoken_sig = sig
-                return self._start(chunks, reading, img, sig)
+                return self._start(chunks, reading, img, sig, now)
             if chunks:
                 n.prepare(chunks)
         elif ready and sig != self.spoken_sig:
@@ -264,8 +275,10 @@ class App:
             if reading.kind in ("other", "none"):
                 chunks = [c for c in chunks if all(p[0] == "cue" for p in c)]  # just "menu closed"
             if auto:
+                if chunks and not self._voice_ready(chunks[0], now):
+                    return None
                 self.spoken_sig = sig
-                return self._start(chunks, reading, img, sig)
+                return self._start(chunks, reading, img, sig, now)
             if reading.kind in ("other", "none"):
                 n.remember(reading)  # the menu closed: forget it
             n.prepare(n.plan(reading, repeat=True))  # ready for the button
@@ -273,15 +286,32 @@ class App:
             n.prepare(n.plan(reading))  # still settling: get its speech ready
         return None
 
-    def _start(self, chunks, reading, img, sig):
-        """Say the first chunk now, queue the rest. None = nothing to say."""
+    def _voice_ready(self, chunk, now):
+        """False while the natural voice is still making this speech, for up to
+        natural_wait seconds; then (or if it isn't working) the standard voice says it."""
+        n = self.narrator
+        if not n.waiting(chunk):
+            return True
+        if chunk != self.wait_chunk:
+            self.wait_chunk, self.wait_since = chunk, now
+            n.prepare([chunk])           # first in line
+        return now - self.wait_since >= self.settings["natural_wait"]
+
+    def _start(self, chunks, reading, img, sig, now, since=None):
+        """Say the first chunk now, queue the rest. None = nothing to say.
+        since: when the text was there to read (default: when the screen settled)."""
         self.narrator.remember(reading)
         if not chunks:
             return None
         self.queue = collections.deque(chunks[1:])
         self.queue_sig = sig
         self.narrator.prepare(chunks[1:])
-        return self._send(chunks[0], img, reading)
+        waited = now - self.wait_since if chunks[0] == self.wait_chunk else 0.0
+        made = self.clock()
+        reply = self._send(chunks[0], img, reading)
+        done = self.clock()
+        self.latency.append((done - (self.stable_since if since is None else since), waited, done - made))
+        return reply
 
     def _send(self, chunk, img, reading):
         return self._send_wav(self.narrator.render(chunk), img, reading.flat())
@@ -515,15 +545,47 @@ def write_status(app, watcher, starter, port):
                 os.path.basename(n.speaker.voice), os.path.basename(n.menu_speaker.voice),
                 n.menu_speaker.pitch, n.speaker.volume))
             f.write("natural voice: %s\n" % (
-                "in use, with %s for lines not made yet" % os.path.basename(n.speaker.hts) if n.speaker.neural
+                "in use (waits up to %g s for it, else %s)" % (s["natural_wait"], os.path.basename(n.speaker.hts))
+                if n.speaker.neural
                 else "not installed (standard voice used)" if tts.parse_voice(s["voice"])[0] == "tsukuyomi"
                 else "not selected"))
+            for line in natural_report(n):
+                f.write(line + "\n")
+            for line in latency_report(app.latency):
+                f.write(line + "\n")
             f.write("auto read: %s, autostart: %s, interrupt: %s\n" % (s["auto_read"], s["autostart"], s["interrupt"]))
             f.write("button: %s, reader on/off: %s\n" % (watcher.status if watcher else "off", s["toggle_combo"]))
             f.write("settings: %s\n" % s.path)
         os.replace(tmp, os.path.join(app.capture_dir, "STATUS.txt"))
     except OSError as e:
         sys.stderr.write("urusai: cannot write status: %r\n" % e)
+
+
+def natural_report(n):
+    """STATUS.txt lines on how the natural voice is doing."""
+    with n.lock:
+        st = dict(n.stats)
+    if not (st["made"] or st["failed"]):
+        return [] if not n.speaker.neural else ["  nothing made with it yet"]
+    lines = ["  lines made: %d, failed: %d; said in it: %d, in the standard voice: %d" % (
+        st["made"], st["failed"], st["natural"], st["standard"])]
+    if st["audio"]:
+        lines.append("  time to make 1 s of speech: %.2f s; pace: %.1f syllables a second" % (
+            st["seconds"] / st["audio"], st["morae"] / st["audio"]))
+    if st["error"]:
+        lines.append("  last error: %s" % st["error"])
+    return lines
+
+
+def latency_report(latency):
+    """STATUS.txt line: how long text waits before it's heard."""
+    if not latency:
+        return []
+    total = sorted(t for t, _, _ in latency)
+    return ["delay from text on screen to speech (last %d): typical %.2f s, longest %.2f s;"
+            " waiting for the natural voice %.2f s, making the sound %.2f s (averages)" % (
+                len(total), total[len(total) // 2], total[-1],
+                sum(w for _, w, _ in latency) / len(latency), sum(m for _, _, m in latency) / len(latency))]
 
 
 def keep_status(app, watcher, starter, port):

@@ -27,14 +27,19 @@ import array
 import hashlib
 import os
 import threading
+import time
 from collections import OrderedDict
 
 from . import normalize
-from .sounds import cue, silence, to_wav, trim, wav_samples
+from .sounds import RATE, cue, silence, to_wav, trim, wav_samples
 
 MAX_OPTIONS = 12   # bigger "menus" (the name grid) just say the selection
 JOIN_LEAD = 48000 * 40 // 1000   # trimmed from the start of a following line…
 JOIN_TAIL = 48000 * 60 // 1000   # …and the end of the line before: ~30 ms between lines
+SENTENCE_END = "。！？!?…‥」』"   # a line ending in one of these ends a sentence…
+SENTENCE_PAUSE = 380             # …and gets a breath before the next line, as a person would (ms)
+COMMA_PAUSE = 180                # a line ending in 、 or ，: a shorter one
+RETRY_NATURAL = 120              # seconds: after the natural voice failed twice, try it again this late
 CACHE_VERSION = 3  # bump when synthesis or trimming changes
 YES, NO = "はい", "いいえ"
 
@@ -151,6 +156,10 @@ class Narrator:
         self.pause_ms = 300    # pause between menu options (text itself flows on)
         self.cache = ClipCache(cache_dir)
         self.lock = threading.Lock()
+        self.stats = {"made": 0, "failed": 0, "seconds": 0.0, "audio": 0.0, "morae": 0,
+                      "natural": 0, "standard": 0, "error": ""}   # the natural voice, for STATUS.txt
+        self.failures = 0           # natural clips failed in a row…
+        self.failed_at = -1e9       # …the last one when
         # pieces to make in the background, most urgent first: quick clips and natural ones
         # each have their own thread, so a slow natural clip never holds up a quick one
         self.wanted = {True: [], False: []}
@@ -256,14 +265,42 @@ class Narrator:
         samples = self.cache.get(key)
         if samples is None:
             text, particles = normalize.with_particles(piece[1])
-            samples = trim(wav_samples(self._speaker(piece[0]).wav(text, particles, quick=quick)))
+            sp = self._speaker(piece[0])
+            natural = bool(sp.neural) and not quick
+            started = time.monotonic()
+            try:
+                samples = trim(wav_samples(sp.wav(text, particles, quick=quick)))
+            except Exception as e:
+                if natural:
+                    with self.lock:
+                        self.stats["failed"] += 1
+                        self.stats["error"] = str(e)[-300:] or repr(e)
+                        self.failures += 1
+                        self.failed_at = time.monotonic()
+                raise
+            if natural:
+                with self.lock:
+                    st = self.stats
+                    st["made"] += 1
+                    st["seconds"] += time.monotonic() - started
+                    st["audio"] += len(samples) / float(RATE)
+                    st["morae"] += normalize.morae(text)
+                    self.failures = 0
             self.cache.put(key, samples)
         return samples
+
+    def natural_ok(self):
+        """Is the natural voice working (or worth another try)?"""
+        return self.failures < 2 or time.monotonic() - self.failed_at > RETRY_NATURAL
 
     def _natural(self, chunk):
         """Say this chunk in its natural voices? Only if none of it has to be waited for."""
         return all(self.cache.has(self._key(p)) for p in chunk
                    if p[0] in ("talk", "menu") and self._speaker(p[0]).neural)
+
+    def waiting(self, chunk):
+        """Is the natural voice still making (part of) this chunk?"""
+        return self.natural_ok() and not self._natural(chunk)
 
     def say(self, text, kind="talk"):
         """WAV for a short message of our own (e.g. 「よみあげ オフ」)."""
@@ -272,9 +309,13 @@ class Narrator:
     def render(self, chunk):
         """WAV bytes for one chunk (uses the cache, synthesises what's missing)."""
         out = array.array("h")
+        paused = False
         quick = not self._natural(chunk)
         if quick:
             self.prepare([chunk], urgent=False)   # natural next time
+        if any(p[0] in ("talk", "menu") and self._speaker(p[0]).neural for p in chunk):
+            with self.lock:
+                self.stats["standard" if quick else "natural"] += 1
         for i, piece in enumerate(chunk):
             if piece[0] == "gap":
                 out += silence(self.pause_ms - 120)  # RetroArch's own round trip adds ~0.1 s
@@ -284,14 +325,27 @@ class Narrator:
                 samples = self._synth(piece, quick)
                 nxt = chunk[i + 1][0] if i + 1 < len(chunk) else None
                 prev = chunk[i - 1][0] if i else None
-                if piece[0] == "talk" and prev == "talk":
-                    samples = samples[JOIN_LEAD:]   # lines of one box run straight on
-                if piece[0] == "talk" and nxt == "talk":
+                breath = self._breath(piece) if nxt == "talk" else 0
+                if piece[0] == "talk" and prev == "talk" and not paused:
+                    samples = samples[JOIN_LEAD:]   # a sentence running on to the next line
+                if piece[0] == "talk" and nxt == "talk" and not breath:
                     samples = samples[:-JOIN_TAIL] if len(samples) > JOIN_TAIL else samples
                 out += samples
+                paused = bool(breath)
+                if breath:
+                    out += silence(breath)
                 if nxt in ("talk", "menu") and not (piece[0] == "talk" and nxt == "talk"):
                     out += silence(self.pause_ms)
         return to_wav(out)
+
+    def _breath(self, piece):
+        """Silence (ms) after this line when another line follows: where a sentence
+        or a clause ends, a short pause, as when reading aloud; mid-sentence, none."""
+        if piece[0] != "talk":
+            return 0
+        end = piece[1].rstrip()[-1:]
+        ms = 0 if not end else SENTENCE_PAUSE if end in SENTENCE_END else COMMA_PAUSE if end in "、，," else 0
+        return int(ms / max(0.5, self._speaker("talk").speed))
 
     def ready(self, chunk):
         """Can this chunk be said without waiting (in either voice)?"""
@@ -301,7 +355,7 @@ class Narrator:
     def prepare(self, chunks, urgent=True):
         """Make these chunks' speech in the background: quick clips first, then natural ones."""
         pieces = [p for c in chunks for p in c if p[0] in ("talk", "menu")]
-        for quick in (True, False):
+        for quick in (True, False) if self.natural_ok() else (True,):
             todo = [p for p in pieces if (quick or self._speaker(p[0]).neural)
                     and not self.cache.has(self._key(p, quick))]
             if not todo:

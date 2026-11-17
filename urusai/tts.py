@@ -51,10 +51,10 @@ def find_voice(name):
 
 
 class Speaker:
-    def __init__(self, voice="tohoku", speed=0.95, volume=200):
+    def __init__(self, voice="tohoku", speed=0.95, volume=200, natural_speed=1.0):
         self.binary = find_binary()
         self.dic = find_dict()
-        self.configure(voice, speed, volume)
+        self.configure(voice, speed, volume, natural_speed)
         missing = [n for n, v in (("open_jtalk", self.binary), ("dictionary", self.dic),
                                   ("voice", self.hts)) if not v]
         if missing:

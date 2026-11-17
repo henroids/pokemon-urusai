@@ -79,3 +79,11 @@ def for_speech(text):
     t = re.sub(r"(?<=[0-9])[ 　]+(?=[0-9])", "、", t)  # two numbers in a row stay apart
     t = re.sub(r"[ 　]+", "", t).strip("、")
     return t
+
+
+SMALL = set("ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ")
+
+
+def morae(text):
+    """About how many beats (morae) text takes to say: one per kana, small ゃ etc. not counted."""
+    return sum(1 for c in text if ("\u3041" <= c <= "\u30fa" or c == "ー") and c not in SMALL)

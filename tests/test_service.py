@@ -425,6 +425,40 @@ class NaturalVoice(unittest.TestCase):
         n.render(menu)
         self.assertTrue(n.ready(menu))
 
+    def wait_natural(self, n, chunk):
+        for _ in range(100):
+            if n._natural(chunk):
+                return
+            time.sleep(0.05)
+        self.fail("the natural voice never made it")
+
+    def test_a_breath_where_a_sentence_ends_but_not_mid_sentence(self):
+        from urusai.speech import Narrator, SENTENCE_PAUSE
+        self.install_model()
+        n = Narrator(Speaker(voice="tsukuyomi", speed=1.0, natural_speed=1.0), Speaker(voice="tohoku-4"))
+        ended = [("talk", "こんにちは！"), ("talk", "げんき？")]
+        n.prepare([ended])
+        self.wait_natural(n, ended)
+        self.assertFalse(n.waiting(ended))
+        self.assertAlmostEqual(self.seconds(n.render(ended)), 2.0 + SENTENCE_PAUSE / 1000, delta=0.03)
+        with n.lock:
+            self.assertEqual((n.stats["made"], n.stats["natural"], n.stats["failed"]), (2, 1, 0))
+
+    def test_a_broken_natural_voice_is_reported_and_the_standard_voice_takes_over(self):
+        from urusai.speech import Narrator
+        self.install_model()
+        with open(self.neural.find_binary(), "w") as f:
+            f.write("#!/bin/sh\necho 'cannot load model' >&2\nexit 3\n")
+        n = Narrator(Speaker(voice="tsukuyomi", speed=1.0), Speaker(voice="tohoku-4"))
+        chunk = [("talk", "たたかう")]
+        self.assertTrue(n.waiting(chunk))
+        for _ in range(2):
+            with self.assertRaises(RuntimeError):
+                n._synth(chunk[0])
+        self.assertIn("cannot load model", n.stats["error"])
+        self.assertFalse(n.waiting(chunk))          # no point waiting: say it in the standard voice
+        self.assertGreater(self.seconds(n.render(chunk)), 0.3)
+
     def test_resample(self):
         import array
         import math
@@ -516,6 +550,22 @@ class Streaming(unittest.TestCase):
                 break
             time.sleep(0.05)
         self.assertTrue(self.app.narrator.ready([("talk", "やせいの ピカチュウが")]))
+
+    def test_new_text_waits_for_the_natural_voice_but_not_forever(self):
+        g, n = self.g, self.app.narrator
+        busy = {"on": True}
+        n.waiting = lambda chunk: busy["on"]
+        box = two_line_box(g, "やせいの ピカチュウが", "とびだしてきた！", more=True)
+        self.assertIsNone(self.frame(box))                       # still being made: wait
+        self.assertIsNone(self.frame(box, 1.0))
+        busy["on"] = False
+        self.assertEqual(self.frame(box, 0.5), [("talk", "やせいの ピカチュウが"), ("talk", "とびだしてきた！")])
+        self.assertEqual(len(self.app.latency), 1)
+        busy["on"] = True                                       # natural voice too slow this time
+        box2 = two_line_box(g, "とびだしてきた！", "ゆけ！ ゼニガメ！", more=True)
+        self.assertIsNone(self.frame(box2))
+        self.assertEqual(self.frame(box2, self.app.settings["natural_wait"]), [("talk", "ゆけ！ ゼニガメ！")])
+        self.assertTrue(any("natural voice" in line for line in server.latency_report(self.app.latency)))
 
     def test_settled_box_is_one_clip(self):
         self.assertEqual(self.frame(dialogue_canvas(self.g)),

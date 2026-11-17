@@ -20,6 +20,7 @@ DEFAULTS = {
     "volume": 220,           # percent; 100 = natural, higher = louder (soft-limited, never clips)
     "speed": 0.95,           # 1.0 = normal speaking speed
     "natural_speed": 0.85,   # the natural voice's speed on top of that (0.85 = 15% slower)
+    "natural_wait": 8.0,      # seconds a new line may wait for the natural voice before the standard one says it
     "option_pause": 300,     # milliseconds of silence between menu options / choices
     "captures_keep": 50,     # newest spoken screens kept in urusai_captures (0 = don't save any)
     "gba_learn": "on",       # GBA games: also keep a screen now and then when nothing could be read
@@ -52,10 +53,11 @@ sound_cues = {sound_cues}
 # Say the position after the selected option, e.g. 「2ばんめ」: on / off
 menu_position = {menu_position}
 
-# Voices. tsukuyomi is the natural one (piper-plus). It takes a few seconds to
-# make a new line, so a line is said in the standard voice (tohoku) the first
-# time and in the natural voice whenever it comes up again. If it isn't
-# installed, tohoku is used. To go back to the old behaviour: voice = tohoku
+# Voices. tsukuyomi is the natural one (piper-plus). It starts making each line
+# as soon as the line appears, and the line is said once it's ready. Only if
+# that takes longer than natural_wait (below), or the natural voice isn't
+# working, is the line said in the standard voice (tohoku) instead.
+# To use only the standard voice: voice = tohoku
 # Standard voices (instant): tohoku, tohoku_happy, mei, mei_happy, mei_bashful (female), nitech (male).
 # Add +N or -N to make one higher or lower in semitones, e.g. mei+3 or tohoku-4.
 # (menu_voice = tsukuyomi-4 also works, but runs a second copy of the voice: more memory.)
@@ -74,6 +76,11 @@ speed = {speed}
 # The natural voice (tsukuyomi) only: its speed compared with the setting above.
 # 0.85 = 15% slower, 1.0 = the same as the standard voice.
 natural_speed = {natural_speed}
+
+# The natural voice (tsukuyomi) only: the longest a new line waits for it, in
+# seconds, before the standard voice says it instead. 0 = never wait (a new line
+# is then said in the standard voice, and in the natural voice when repeated).
+natural_wait = {natural_wait}
 
 # Pause between menu options and choices, in milliseconds (text itself is read without pauses).
 option_pause = {option_pause}
